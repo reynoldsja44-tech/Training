@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#16324f">
+<title>Coach · Training</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--paper:#f4f1ea;--card:#fffdf9;--ink:#22303c;--muted:#6b7884;--line:#e0d9c9;--navy:#16324f;
+    --strength:#3b6ea5;--cardio:#2f8f86;--accessory:#6a9a5b;--core:#c2754e;--ok:#2f8f86;--red:#a85a5a;
+    --shadow:0 1px 3px rgba(40,50,60,.06),0 5px 18px rgba(40,50,60,.07);}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"Hanken Grotesk",system-ui,sans-serif;font-size:16px;line-height:1.45;padding-bottom:80px;}
+  .wrap{max-width:900px;margin:0 auto;padding:0 18px;}
+  header{background:linear-gradient(180deg,#16324f,#1c3e60);color:#f7f3ea;padding:20px 18px;box-shadow:var(--shadow);}
+  header .inner{max-width:900px;margin:0 auto;display:flex;align-items:center;gap:14px;}
+  header h1{font-family:"Fraunces",serif;font-weight:600;font-size:22px;margin:0;flex:1;}
+  header .crumb{font-size:13px;opacity:.8;cursor:pointer;}
+  header .crumb:hover{text-decoration:underline;}
+  .btn{border:none;border-radius:11px;padding:10px 15px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+  .btn.primary{background:var(--navy);color:#fff;}
+  .btn.light{background:var(--card);color:var(--ink);border:1.5px solid var(--line);}
+  .btn.ghost{background:transparent;color:var(--muted);border:1.5px solid var(--line);}
+  .btn.danger{background:transparent;color:var(--red);border:1.5px solid #e0bdbd;}
+  .btn.sm{padding:5px 10px;font-size:13px;border-radius:9px;}
+  .btn:active{transform:scale(.98);}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:15px;box-shadow:var(--shadow);margin:14px 0;overflow:hidden;}
+  .card-h{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;}
+  .card-h h2{font-size:17px;margin:0;flex:1;font-weight:700;}
+  .card-b{padding:14px 16px;}
+
+  .roster-row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-top:1px solid #f0ebdf;cursor:pointer;}
+  .roster-row:hover{background:#f7f3ea;}
+  .roster-row:first-child{border-top:none;}
+  .avatar{width:40px;height:40px;border-radius:11px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px;flex-shrink:0;}
+  .roster-row .nm{flex:1;}
+  .roster-row .nm b{font-size:16.5px;}
+  .roster-row .nm .slug{font-size:13px;color:var(--muted);font-family:ui-monospace,monospace;}
+  .roster-row .arrow{color:var(--muted);}
+
+  label.fld{display:block;margin:9px 0;}
+  label.fld span{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-bottom:3px;}
+  input.in,textarea.in,select.in{width:100%;font-family:inherit;font-size:15px;border:1.5px solid var(--line);border-radius:10px;padding:9px 11px;background:#fff;color:var(--ink);}
+  input.in:focus,textarea.in:focus,select.in:focus{outline:none;border-color:var(--strength);}
+  textarea.in{resize:vertical;min-height:40px;}
+  .row2{display:flex;gap:10px;flex-wrap:wrap;}
+  .row2>*{flex:1;min-width:140px;}
+
+  .tabs{display:flex;gap:8px;margin:6px 0 0;}
+  .tab{padding:9px 15px;border-radius:11px 11px 0 0;cursor:pointer;font-weight:700;font-size:14.5px;color:var(--muted);border:1.5px solid transparent;border-bottom:none;}
+  .tab.on{background:var(--card);color:var(--ink);border-color:var(--line);}
+
+  .day{border:1px solid var(--line);border-radius:13px;margin:12px 0;overflow:hidden;background:#fffefb;}
+  .day-h{display:flex;align-items:center;gap:9px;padding:10px 13px;background:#f1ece1;}
+  .day-h .dow{font-family:"Fraunces",serif;font-weight:600;font-size:18px;width:46px;}
+  .day-h input{flex:1;}
+  .day-b{padding:11px 13px;}
+  .blk{border:1px solid var(--line);border-left:5px solid var(--strength);border-radius:0 11px 11px 0;margin:10px 0;padding:11px;background:#fff;}
+  .blk[data-kind="cardio"]{border-left-color:var(--cardio);}
+  .blk[data-kind="accessory"]{border-left-color:var(--accessory);}
+  .blk[data-kind="core"]{border-left-color:var(--core);}
+  .blk-top{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;}
+  .ex{display:flex;gap:7px;align-items:flex-start;padding:8px;border:1px solid #eee4d2;border-radius:10px;margin:7px 0;background:#fffdf8;flex-wrap:wrap;}
+  .ex .grow{flex:1;min-width:160px;}
+  .ex .reorder{display:flex;flex-direction:column;gap:2px;}
+  .ex .reorder button{border:none;background:#eee;border-radius:5px;width:24px;height:20px;cursor:pointer;font-size:11px;line-height:1;color:#555;}
+  .muted{color:var(--muted);font-size:13px;}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:11px 18px;border-radius:12px;font-weight:600;opacity:0;transition:.25s;z-index:60;box-shadow:var(--shadow);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast.err{background:#9a3b3b;}
+  .savebar{position:fixed;left:0;right:0;bottom:0;background:rgba(244,241,234,.94);backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:11px 18px;}
+  .savebar .inner{max-width:900px;margin:0 auto;display:flex;gap:10px;align-items:center;justify-content:flex-end;}
+  .logday{border:1px solid var(--line);border-radius:12px;margin:11px 0;overflow:hidden;}
+  .logday h4{margin:0;padding:10px 13px;background:#f1ece1;font-size:15px;}
+  .logrow{display:flex;gap:9px;align-items:center;padding:8px 13px;border-top:1px solid #f0ebdf;font-size:14px;flex-wrap:wrap;}
+  .logrow .lx{flex:1;min-width:140px;font-weight:600;}
+  .logrow .v{color:var(--muted);}
+  .empty{text-align:center;padding:46px 20px;color:var(--muted);}
+  .empty .big{font-family:"Fraunces",serif;font-size:22px;color:var(--ink);margin-bottom:6px;}
+  code{background:#eee4d2;padding:1px 6px;border-radius:5px;font-size:13px;}
+</style>
+</head>
+<body>
+<header><div class="inner">
+  <h1 id="hTitle">Coach Dashboard</h1>
+  <span class="crumb" id="hCrumb" onclick="goRoster()" style="display:none">← All athletes</span>
+</div></header>
+
+<div class="wrap"><div id="app"></div></div>
+<div class="savebar" id="savebar" style="display:none"><div class="inner">
+  <span class="muted" id="saveHint"></span>
+  <button class="btn light" onclick="goRoster()">Cancel</button>
+  <button class="btn primary" id="saveProgBtn">Save program</button>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const SB_URL="https://rkuwuuwkymetibzfmilk.supabase.co";
+const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrdXd1dXdreW1ldGliemZtaWxrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTQ5MjcsImV4cCI6MjA5NjUzMDkyN30.k7YOMavSufOZC3d7gm2vX9KXXHfBPOQqtD0cms64WX8";
+const REST=SB_URL+"/rest/v1";
+const DEMO=new URLSearchParams(location.search).get("demo")==="1";
+function H(){return {apikey:SB_KEY,Authorization:"Bearer "+SB_KEY};}
+
+const realDB={
+  async list(){const r=await fetch(`${REST}/athletes?select=*&order=name`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
+  async create(a){const r=await fetch(`${REST}/athletes`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify(a)});if(!r.ok)throw new Error(await r.text());return (await r.json())[0];},
+  async update(id,patch){const r=await fetch(`${REST}/athletes?id=eq.${id}`,{method:"PATCH",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify(patch)});if(!r.ok)throw new Error(await r.text());},
+  async remove(id){const r=await fetch(`${REST}/athletes?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());},
+  async logs(slug){const r=await fetch(`${REST}/logs?athlete_slug=eq.${encodeURIComponent(slug)}&order=log_date.desc,created_at.desc`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
+  async delLog(id){const r=await fetch(`${REST}/logs?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());}
+};
+const DEMO_PROG={days:[
+  {dow:"Mon",focus:"Strength A + Arms",badge:"55–60 min",blocks:[
+    {kind:"strength",tag:"Strength",title:"Strength A — legs + push",sub:"cable + dumbbells",
+     ex:[{name:"Goblet squat to box (DB)",dose:"3 × 8–10",cue:"Heels down",coachNote:"Start light."},
+         {name:"Cable biceps curl",dose:"2 × 12",cue:"Elbows pinned"}]},
+  ]},
+  {dow:"Tue",focus:"Cardio (Zone 2)",badge:"55 min",blocks:[
+    {kind:"cardio",tag:"Cardio",title:"Zone 2",sub:"25–40 min",note:"Conversational pace.",ex:[{name:"Zone 2 session",dose:"25–40 min",cue:""}]}]},
+  {dow:"Sun",focus:"Rest",badge:"—",rest:true,blocks:[{kind:"accessory",tag:"Optional",title:"Rest",sub:"",note:"Recover.",ex:[]}]},
+]};
+function makeMock(){
+  let aths=[{id:"m1",slug:"mom",name:"Mom (82)",program:JSON.parse(JSON.stringify(DEMO_PROG))}];
+  let logs=[{id:"l1",athlete_slug:"mom",log_date:"2026-06-07",day_focus:"Strength A + Arms",exercise_name:"Goblet squat to box (DB)",set_number:1,reps:"10",weight:25,note:"Felt good"},
+            {id:"l2",athlete_slug:"mom",log_date:"2026-06-07",day_focus:"Strength A + Arms",exercise_name:"Goblet squat to box (DB)",set_number:2,reps:"9",weight:25,note:null}];
+  let n=1;
+  return {async list(){return JSON.parse(JSON.stringify(aths));},
+    async create(a){const x={...a,id:"m"+(++n+1)};aths.push(x);return x;},
+    async update(id,patch){const a=aths.find(x=>x.id===id);if(a)Object.assign(a,patch);},
+    async remove(id){aths=aths.filter(x=>x.id!==id);},
+    async logs(slug){return logs.filter(l=>l.athlete_slug===slug);},
+    async delLog(id){logs=logs.filter(l=>l.id!==id);}};
+}
+const DB=DEMO?makeMock():realDB;
+
+const KINDS=["strength","cardio","accessory","core"];
+const DOWS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+let roster=[], editing=null, editTab="program";
+function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function toast(m,e){const t=document.getElementById("toast");t.textContent=m;t.className="toast show"+(e?" err":"");setTimeout(()=>t.className="toast",2200);}
+function slugify(s){return (s||"").toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");}
+
+async function start(){ await goRoster(); }
+async function goRoster(){
+  editing=null;
+  document.getElementById("hCrumb").style.display="none";
+  document.getElementById("hTitle").textContent="Coach Dashboard";
+  document.getElementById("savebar").style.display="none";
+  try{ roster=await DB.list(); }catch(e){ document.getElementById("app").innerHTML=`<div class="empty"><div class="big">Can't reach the database</div><div class="muted">${esc(e.message).slice(0,160)}</div></div>`; return; }
+  renderRoster();
+}
+function renderRoster(){
+  let h=`<div class="card"><div class="card-h"><h2>Athletes</h2><button class="btn primary sm" onclick="newAthlete()">+ Add athlete</button></div>`;
+  if(!roster.length){ h+=`<div class="empty"><div class="big">No athletes yet</div>Add your first person to assign them a program.</div>`; }
+  else roster.forEach(a=>{
+    h+=`<div class="roster-row" onclick="openAthlete('${a.id}')">
+      <div class="avatar">${esc((a.name||"?").slice(0,1).toUpperCase())}</div>
+      <div class="nm"><b>${esc(a.name)}</b><div class="slug">?athlete=${esc(a.slug)}</div></div>
+      <div class="arrow">›</div></div>`;
+  });
+  h+=`</div>`;
+  if(roster.length) h+=`<p class="muted" style="margin-left:4px">Tap an athlete to edit their program or review their logs. Their page link is <code>…/index.html?athlete=SLUG</code>.</p>`;
+  document.getElementById("app").innerHTML=h;
+}
+
+function newAthlete(){
+  const cloneOpts=roster.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join("");
+  document.getElementById("app").innerHTML=`<div class="card"><div class="card-h"><h2>New athlete</h2></div><div class="card-b">
+    <label class="fld"><span>Name</span><input class="in" id="nName" placeholder="e.g. Dad" oninput="document.getElementById('nSlug').value=window.__slug?document.getElementById('nSlug').value:slugify(this.value)"></label>
+    <label class="fld"><span>URL slug (used in their link)</span><input class="in" id="nSlug" placeholder="dad" oninput="window.__slug=true"></label>
+    <label class="fld"><span>Start their program from…</span>
+      <select class="in" id="nClone"><option value="">Blank (build from scratch)</option>${cloneOpts}</select></label>
+    <div class="row2" style="margin-top:12px">
+      <button class="btn light" onclick="goRoster()">Cancel</button>
+      <button class="btn primary" onclick="createAthlete()">Create athlete</button>
+    </div></div></div>`;
+  window.__slug=false;
+}
+async function createAthlete(){
+  const name=document.getElementById("nName").value.trim();
+  let slug=slugify(document.getElementById("nSlug").value||name);
+  const cloneId=document.getElementById("nClone").value;
+  if(!name||!slug){ toast("Name and slug are required",true); return; }
+  if(roster.some(a=>a.slug===slug)){ toast("That slug is taken",true); return; }
+  let program={days:[]};
+  if(cloneId){ const src=roster.find(a=>a.id===cloneId); if(src) program=JSON.parse(JSON.stringify(src.program||{days:[]})); }
+  try{ const a=await DB.create({name,slug,program}); toast("Athlete created ✓"); roster=await DB.list(); openAthlete(a.id); }
+  catch(e){ toast("Create failed: "+e.message.slice(0,60),true); }
+}
+
+function openAthlete(id){
+  editing=JSON.parse(JSON.stringify(roster.find(a=>a.id===id)));
+  if(!editing.program||!editing.program.days) editing.program={days:[]};
+  editTab="program";
+  document.getElementById("hCrumb").style.display="block";
+  document.getElementById("hTitle").textContent=editing.name;
+  renderEditor();
+}
+function renderEditor(){
+  let h=`<div class="tabs">
+    <div class="tab ${editTab==='program'?'on':''}" onclick="setTab('program')">Program</div>
+    <div class="tab ${editTab==='logs'?'on':''}" onclick="setTab('logs')">Logs</div>
+    <div class="tab ${editTab==='settings'?'on':''}" onclick="setTab('settings')">Settings</div>
+  </div>`;
+  if(editTab==="program") h+=renderProgramEditor();
+  else if(editTab==="logs") h+=`<div id="logsArea" class="card"><div class="card-b"><div class="muted">Loading logs…</div></div></div>`;
+  else h+=renderSettings();
+  document.getElementById("app").innerHTML=h;
+  document.getElementById("savebar").style.display = editTab==="program"?"block":"none";
+  if(editTab==="logs") loadLogs();
+  if(editTab==="program") document.getElementById("saveHint").textContent="Changes apply next time they open their page.";
+}
+function setTab(t){ editTab=t; renderEditor(); }
+
+/* ---------- program editor ---------- */
+function renderProgramEditor(){
+  let h=`<div class="card"><div class="card-b">`;
+  editing.program.days.forEach((d,di)=>{
+    h+=`<div class="day"><div class="day-h">
+      <span class="dow">${esc(d.dow)}</span>
+      <input class="in" value="${esc(d.focus||"")}" placeholder="Focus" onchange="setDay(${di},'focus',this.value)">
+      <input class="in" style="max-width:110px" value="${esc(d.badge||"")}" placeholder="Time" onchange="setDay(${di},'badge',this.value)">
+      <label class="muted" style="display:flex;gap:4px;align-items:center;white-space:nowrap"><input type="checkbox" ${d.rest?"checked":""} onchange="setDay(${di},'rest',this.checked)">rest</label>
+      <button class="btn ghost sm" onclick="moveDay(${di},-1)">↑</button>
+      <button class="btn ghost sm" onclick="moveDay(${di},1)">↓</button>
+      <button class="btn danger sm" onclick="delDay(${di})">✕</button>
+    </div><div class="day-b">`;
+    h+=`<input class="in" style="margin-bottom:8px" value="${esc(d.note||"")}" placeholder="Day note (optional)" onchange="setDay(${di},'note',this.value)">`;
+    (d.blocks||[]).forEach((b,bi)=>{ h+=renderBlockEditor(di,bi,b); });
+    h+=`<button class="btn light sm" onclick="addBlock(${di})">+ Add block</button>`;
+    h+=`</div></div>`;
+  });
+  h+=`<button class="btn light" onclick="addDay()">+ Add day</button>`;
+  h+=`</div></div>`;
+  return h;
+}
+function renderBlockEditor(di,bi,b){
+  let h=`<div class="blk" data-kind="${esc(b.kind||"strength")}">
+    <div class="blk-top">
+      <select class="in" style="max-width:120px" onchange="setBlk(${di},${bi},'kind',this.value)">
+        ${KINDS.map(k=>`<option value="${k}" ${b.kind===k?"selected":""}>${k}</option>`).join("")}</select>
+      <input class="in" value="${esc(b.title||"")}" placeholder="Block title" onchange="setBlk(${di},${bi},'title',this.value)">
+      <button class="btn ghost sm" onclick="moveBlk(${di},${bi},-1)">↑</button>
+      <button class="btn ghost sm" onclick="moveBlk(${di},${bi},1)">↓</button>
+      <button class="btn danger sm" onclick="delBlk(${di},${bi})">✕</button>
+    </div>
+    <div class="row2">
+      <input class="in" value="${esc(b.tag||"")}" placeholder="Tag (e.g. Strength)" onchange="setBlk(${di},${bi},'tag',this.value)">
+      <input class="in" value="${esc(b.sub||"")}" placeholder="Subtitle" onchange="setBlk(${di},${bi},'sub',this.value)">
+    </div>
+    <input class="in" style="margin-top:7px" value="${esc(b.note||"")}" placeholder="Block note (optional)" onchange="setBlk(${di},${bi},'note',this.value)">`;
+  (b.ex||[]).forEach((e,ei)=>{ h+=renderExEditor(di,bi,ei,e); });
+  h+=`<button class="btn light sm" style="margin-top:8px" onclick="addEx(${di},${bi})">+ Add exercise</button></div>`;
+  return h;
+}
+function renderExEditor(di,bi,ei,e){
+  return `<div class="ex">
+    <div class="reorder"><button onclick="moveEx(${di},${bi},${ei},-1)">▲</button><button onclick="moveEx(${di},${bi},${ei},1)">▼</button></div>
+    <div class="grow">
+      <div class="row2">
+        <input class="in" value="${esc(e.name||"")}" placeholder="Exercise name" onchange="setEx(${di},${bi},${ei},'name',this.value)">
+        <input class="in" style="max-width:130px" value="${esc(e.dose||"")}" placeholder="Sets×reps / dose" onchange="setEx(${di},${bi},${ei},'dose',this.value)">
+      </div>
+      <input class="in" style="margin-top:6px" value="${esc(e.cue||"")}" placeholder="Form cue (shown to athlete)" onchange="setEx(${di},${bi},${ei},'cue',this.value)">
+      <input class="in" style="margin-top:6px" value="${esc(e.coachNote||"")}" placeholder="Coach note (your guidance for this assignment)" onchange="setEx(${di},${bi},${ei},'coachNote',this.value)">
+    </div>
+    <button class="btn danger sm" onclick="delEx(${di},${bi},${ei})">✕</button>
+  </div>`;
+}
+/* editor mutations */
+function setDay(di,f,v){editing.program.days[di][f]=v;}
+function setBlk(di,bi,f,v){editing.program.days[di].blocks[bi][f]=v; if(f==="kind")renderEditor();}
+function setEx(di,bi,ei,f,v){editing.program.days[di].blocks[bi].ex[ei][f]=v;}
+function addDay(){const used=editing.program.days.map(d=>d.dow);const next=DOWS.find(d=>!used.includes(d))||"Day";editing.program.days.push({dow:next,focus:"",badge:"",blocks:[]});renderEditor();}
+function delDay(di){if(!confirm("Delete this whole day?"))return;editing.program.days.splice(di,1);renderEditor();}
+function moveDay(di,dir){const a=editing.program.days;const j=di+dir;if(j<0||j>=a.length)return;[a[di],a[j]]=[a[j],a[di]];renderEditor();}
+function addBlock(di){editing.program.days[di].blocks=editing.program.days[di].blocks||[];editing.program.days[di].blocks.push({kind:"strength",tag:"Strength",title:"New block",sub:"",ex:[]});renderEditor();}
+function delBlk(di,bi){editing.program.days[di].blocks.splice(bi,1);renderEditor();}
+function moveBlk(di,bi,dir){const a=editing.program.days[di].blocks;const j=bi+dir;if(j<0||j>=a.length)return;[a[bi],a[j]]=[a[j],a[bi]];renderEditor();}
+function addEx(di,bi){const b=editing.program.days[di].blocks[bi];b.ex=b.ex||[];b.ex.push({name:"New exercise",dose:"",cue:"",coachNote:""});renderEditor();}
+function delEx(di,bi,ei){editing.program.days[di].blocks[bi].ex.splice(ei,1);renderEditor();}
+function moveEx(di,bi,ei,dir){const a=editing.program.days[di].blocks[bi].ex;const j=ei+dir;if(j<0||j>=a.length)return;[a[ei],a[j]]=[a[j],a[ei]];renderEditor();}
+
+async function saveProgram(){
+  const btn=document.getElementById("saveProgBtn");btn.disabled=true;btn.textContent="Saving…";
+  try{ await DB.update(editing.id,{program:editing.program,name:editing.name,slug:editing.slug}); toast("Program saved ✓"); const i=roster.findIndex(a=>a.id===editing.id); if(i>=0)roster[i]={...roster[i],program:editing.program}; }
+  catch(e){ toast("Save failed: "+e.message.slice(0,60),true); }
+  btn.disabled=false;btn.textContent="Save program";
+}
+
+/* ---------- settings ---------- */
+function renderSettings(){
+  return `<div class="card"><div class="card-b">
+    <label class="fld"><span>Name</span><input class="in" value="${esc(editing.name)}" onchange="editing.name=this.value;document.getElementById('hTitle').textContent=this.value"></label>
+    <label class="fld"><span>URL slug</span><input class="in" value="${esc(editing.slug)}" onchange="editing.slug=slugify(this.value);this.value=editing.slug"></label>
+    <p class="muted">Their page: <code>…/index.html?athlete=${esc(editing.slug)}</code></p>
+    <div class="row2" style="margin-top:10px">
+      <button class="btn light" onclick="saveSettings()">Save details</button>
+      <button class="btn danger" onclick="deleteAthlete()">Delete athlete</button>
+    </div></div></div>`;
+}
+async function saveSettings(){
+  try{ await DB.update(editing.id,{name:editing.name,slug:editing.slug}); toast("Saved ✓"); roster=await DB.list(); }
+  catch(e){ toast("Save failed",true); }
+}
+async function deleteAthlete(){
+  if(!confirm("Delete "+editing.name+" and all their data? This cannot be undone."))return;
+  try{ await DB.remove(editing.id); toast("Deleted"); goRoster(); }catch(e){ toast("Delete failed",true); }
+}
+
+/* ---------- logs ---------- */
+async function loadLogs(){
+  let logs=[];
+  try{ logs=await DB.logs(editing.slug); }catch(e){ document.getElementById("logsArea").innerHTML=`<div class="card-b muted">Couldn't load logs.</div>`; return; }
+  const area=document.getElementById("logsArea");
+  if(!logs.length){ area.innerHTML=`<div class="empty"><div class="big">No logs yet</div>${esc(editing.name)} hasn't recorded any workouts.</div>`; return; }
+  const byDate={}; logs.forEach(l=>{(byDate[l.log_date]=byDate[l.log_date]||[]).push(l);});
+  let h=`<div class="card-b">`;
+  Object.keys(byDate).sort().reverse().forEach(date=>{
+    const rows=byDate[date];
+    h+=`<div class="logday"><h4>${esc(date)} <span class="muted" style="font-weight:400">${esc(rows[0].day_focus||"")}</span></h4>`;
+    rows.forEach(l=>{
+      h+=`<div class="logrow"><span class="lx">${esc(l.exercise_name)} <span class="v">· set ${l.set_number}</span></span>
+        <span class="v">${esc(l.reps||"–")} reps${l.weight!=null?" @ "+esc(l.weight)+" lb":""}</span>
+        ${l.note?`<span class="v">📝 ${esc(l.note)}</span>`:""}
+        <button class="btn danger sm" onclick="delLog('${l.id}')">🗑</button></div>`;
+    });
+    h+=`</div>`;
+  });
+  h+=`</div>`; area.innerHTML=h;
+}
+async function delLog(id){ if(!confirm("Delete this log entry?"))return; try{ await DB.delLog(id); toast("Deleted"); loadLogs(); }catch(e){ toast("Delete failed",true); } }
+
+document.getElementById("saveProgBtn").onclick=saveProgram;
+start();
+</script>
+</body>
+</html>
