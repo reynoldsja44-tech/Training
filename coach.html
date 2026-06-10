@@ -146,7 +146,11 @@ const realDB={
   async libList(){const r=await fetch(`${REST}/exercises?select=*&order=kind,name`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
   async libCreate(e){const r=await fetch(`${REST}/exercises`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify(e)});if(!r.ok)throw new Error(await r.text());return (await r.json())[0];},
   async libUpdate(id,patch){const r=await fetch(`${REST}/exercises?id=eq.${id}`,{method:"PATCH",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify(patch)});if(!r.ok)throw new Error(await r.text());},
-  async libRemove(id){const r=await fetch(`${REST}/exercises?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());}
+  async libRemove(id){const r=await fetch(`${REST}/exercises?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());},
+  async grpList(){const r=await fetch(`${REST}/groups?select=*&order=name`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
+  async grpCreate(g){const r=await fetch(`${REST}/groups`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify(g)});if(!r.ok)throw new Error(await r.text());return (await r.json())[0];},
+  async grpUpdate(id,patch){const r=await fetch(`${REST}/groups?id=eq.${id}`,{method:"PATCH",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify(patch)});if(!r.ok)throw new Error(await r.text());},
+  async grpRemove(id){const r=await fetch(`${REST}/groups?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());}
 };
 const DEMO_PROG={days:[
   {dow:"Mon",focus:"Strength A + Arms",badge:"55–60 min",blocks:[{kind:"strength",tag:"Strength",title:"Strength A — legs + push",sub:"cable + dumbbells",ex:[{name:"Goblet squat to box (DB)",dose:"3 × 8–10",cue:"Heels down",coachNote:"Start light."},{name:"Cable biceps curl",dose:"2 × 12",cue:"Elbows pinned"}]}]},
@@ -158,10 +162,14 @@ function makeMock(){
   let y=iso(new Date(today.getTime()-2*864e5));
   let logs=[{id:"l1",athlete_slug:"mom",log_date:y,day_dow:"Mon",day_focus:"Strength A + Arms",exercise_name:"Goblet squat to box (DB)",set_number:1,reps:"10",weight:25,note:"Felt good"},
             {id:"l2",athlete_slug:"mom",log_date:y,day_dow:"Mon",day_focus:"Strength A + Arms",exercise_name:"Goblet squat to box (DB)",set_number:2,reps:"9",weight:25,note:null}];
-  let lib=[{id:"e1",name:"Goblet squat to box (DB)",kind:"strength",dose:"3 × 8–10",cue:"Heels down"},
-           {id:"e2",name:"Standing cable chest press",kind:"strength",dose:"3 × 10–12",cue:"Staggered stance"},
-           {id:"e3",name:"Zone 2 session",kind:"cardio",dose:"25–40 min",cue:"Talk-test pace"},
-           {id:"e4",name:"Dead bug",kind:"core",dose:"3 × 8 / side",cue:"Low back flat"}];
+  let lib=[{id:"e1",name:"Goblet squat to box (DB)",kind:"strength",dose:"3 × 8–10",cue:"Heels down",category:"accessory"},
+           {id:"e2",name:"Standing cable chest press",kind:"strength",dose:"3 × 10–12",cue:"Staggered stance",category:"accessory"},
+           {id:"e3",name:"Zone 2 session",kind:"cardio",dose:"25–40 min",cue:"Talk-test pace",category:null},
+           {id:"e4",name:"Dead bug",kind:"core",dose:"3 × 8 / side",cue:"Low back flat",category:"accessory"},
+           {id:"e5",name:"Thruster",kind:"strength",dose:"",cue:"Front squat into press",category:"crossfit"},
+           {id:"e6",name:"Wall ball",kind:"cardio",dose:"",cue:"Throw to target",category:"crossfit"},
+           {id:"e7",name:"Sled Push",kind:"strength",dose:"50 m",cue:"Stay low",category:"hyrox"}];
+  let grps=[{id:"g1",name:"Lower body strength",kind:"strength",tag:"Strength",items:[{name:"Goblet squat to box (DB)",dose:"3 × 8–10",cue:"Heels down",coachNote:""},{name:"Sled Push",dose:"4 × 20 m",cue:"Stay low",coachNote:""}]}];
   let n=1;
   return {async list(){return JSON.parse(JSON.stringify(aths));},
     async create(a){const x={...a,id:"m"+(++n+1)};aths.push(x);return x;},
@@ -172,7 +180,11 @@ function makeMock(){
     async libList(){return JSON.parse(JSON.stringify(lib));},
     async libCreate(e){const x={...e,id:"e"+(++n+10)};lib.push(x);return x;},
     async libUpdate(id,patch){const e=lib.find(x=>x.id===id);if(e)Object.assign(e,patch);},
-    async libRemove(id){lib=lib.filter(x=>x.id!==id);}};
+    async libRemove(id){lib=lib.filter(x=>x.id!==id);},
+    async grpList(){return JSON.parse(JSON.stringify(grps));},
+    async grpCreate(g){const x={...g,id:"g"+(++n+20)};grps.push(x);return x;},
+    async grpUpdate(id,patch){const g=grps.find(x=>x.id===id);if(g)Object.assign(g,patch);},
+    async grpRemove(id){grps=grps.filter(x=>x.id!==id);}};
 }
 const DB=DEMO?makeMock():realDB;
 
@@ -181,6 +193,9 @@ const DOWS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const DOW_OF=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 let roster=[], editing=null, editTab="calendar", athLogs=[], library=[];
 let calMonth=new Date(), selCalDate=null;
+let libQ="", libKind="", libCat="", pickKind="";
+let groups=[], editingGroup=null, gPickKind="", agSel={groupId:null,dows:[]};
+function libCategories(){return [...new Set(library.map(e=>e.category).filter(Boolean))].sort();}
 function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function toast(m,e){const t=document.getElementById("toast");t.textContent=m;t.className="toast show"+(e?" err":"");setTimeout(()=>t.className="toast",2200);}
 function slugify(s){return (s||"").toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");}
@@ -200,6 +215,7 @@ async function goRoster(){
 function renderRoster(){
   let h=`<div class="card"><div class="card-h"><h2>Athletes</h2>
     <button class="btn light sm" onclick="openLibrary()">📚 Exercise library</button>
+    <button class="btn light sm" onclick="openGroups()">🧩 Groups</button>
     <button class="btn primary sm" onclick="newAthlete()">+ Add athlete</button></div>`;
   if(!roster.length)h+=`<div class="empty"><div class="big">No athletes yet</div>Add your first person to assign them a program.</div>`;
   else roster.forEach(a=>{h+=`<div class="roster-row" onclick="openAthlete('${a.id}')"><div class="avatar">${esc((a.name||"?").slice(0,1).toUpperCase())}</div><div class="nm"><b>${esc(a.name)}</b><div class="slug">?athlete=${esc(a.slug)}</div></div><div class="arrow">›</div></div>`;});
@@ -327,7 +343,7 @@ function renderProgramEditor(){
     </div><div class="day-b">`;
     h+=`<input class="in" style="margin-bottom:8px" value="${esc(d.note||"")}" placeholder="Day note (optional, shown to athlete)" onchange="setDay(${di},'note',this.value)">`;
     (d.blocks||[]).forEach((b,bi)=>{h+=renderBlockEditor(di,bi,b);});
-    h+=`<button class="btn light sm" onclick="addBlock(${di})">+ Add block</button></div></div>`;
+    h+=`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn light sm" onclick="addBlock(${di})">+ Add block</button><button class="btn light sm" onclick="openAddGroup(${di})">🧩 Add group</button></div></div></div>`;
   });
   h+=`<button class="btn light" onclick="addDay()">+ Add day</button></div></div>`;
   return h;
@@ -383,18 +399,24 @@ async function saveProgram(){
 /* ---------------- EXERCISE PICKER MODAL ---------------- */
 async function openExPicker(di,bi){
   if(!library.length){try{library=await DB.libList();}catch(e){library=[];}}
-  renderPicker(di,bi,"");
+  pickKind="";renderPicker(di,bi,"","");
 }
-function renderPicker(di,bi,q){
+function renderPicker(di,bi,q,cat){
   const ql=(q||"").toLowerCase();
-  const items=library.filter(e=>!ql||(e.name||"").toLowerCase().includes(ql)||(e.kind||"").includes(ql));
+  const items=library.filter(e=>(!ql||(e.name||"").toLowerCase().includes(ql))&&(!pickKind||e.kind===pickKind)&&(!cat||e.category===cat));
+  const cats=libCategories();
   let h=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-h"><h3>Add from library</h3><button class="btn ghost sm" onclick="closeModal()">Close</button></div><div class="modal-b">
-    <input class="in" placeholder="Search exercises…" value="${esc(q||"")}" oninput="renderPicker(${di},${bi},this.value)" autofocus style="margin-bottom:8px">`;
+    <input class="in" placeholder="Search exercises…" value="${esc(q||"")}" oninput="renderPicker(${di},${bi},this.value,'${esc(cat||"")}')" autofocus style="margin-bottom:8px">
+    <div class="row2" style="margin-bottom:10px">
+      <select class="in" onchange="pickKind=this.value;renderPicker(${di},${bi},'${esc(q||"")}','${esc(cat||"")}')"><option value="">All kinds</option>${KINDS.map(k=>`<option ${pickKind===k?"selected":""}>${k}</option>`).join("")}</select>
+      <select class="in" onchange="renderPicker(${di},${bi},'${esc(q||"")}',this.value)"><option value="">All categories</option>${cats.map(c=>`<option ${cat===c?"selected":""}>${esc(c)}</option>`).join("")}</select>
+    </div>
+    <div class="muted" style="margin-bottom:6px">${items.length} shown</div>`;
   if(!library.length)h+=`<div class="muted">Your library is empty. Build one from the roster screen, or use “Blank exercise”.</div>`;
   else if(!items.length)h+=`<div class="muted">No matches.</div>`;
   items.forEach(e=>{h+=`<div class="libitem" onclick='pickEx(${di},${bi},${JSON.stringify(e).replace(/'/g,"&#39;")})'>
     <div class="li-nm"><b>${esc(e.name)}</b>${e.dose?` <span class="muted">· ${esc(e.dose)}</span>`:""}${e.cue?`<div class="muted">${esc(e.cue)}</div>`:""}</div>
-    <span class="kindbadge ${esc(e.kind||"strength")}">${esc(e.kind||"")}</span></div>`;});
+    ${e.category?`<span class="kindbadge" style="background:#efe9f5;color:#6a4f8f">${esc(e.category)}</span>`:""}<span class="kindbadge ${esc(e.kind||"strength")}">${esc(e.kind||"")}</span></div>`;});
   h+=`</div></div></div>`;
   document.getElementById("modalRoot").innerHTML=h;
 }
@@ -407,38 +429,149 @@ function closeModal(){document.getElementById("modalRoot").innerHTML="";}
 /* ---------------- LIBRARY MANAGER ---------------- */
 async function openLibrary(){
   editing=null;document.getElementById("hCrumb").style.display="block";document.getElementById("hTitle").textContent="Exercise library";
-  document.getElementById("savebar").style.display="none";
+  document.getElementById("savebar").style.display="none";libQ="";libKind="";libCat="";
   try{library=await DB.libList();}catch(e){library=[];}
-  renderLibraryScreen("");
+  renderLibraryScreen();
 }
-function renderLibraryScreen(q){
-  const ql=(q||"").toLowerCase();const items=library.filter(e=>!ql||(e.name||"").toLowerCase().includes(ql)||(e.kind||"").includes(ql));
-  let h=`<div class="card"><div class="card-h"><h2>Exercise library</h2><button class="btn primary sm" onclick="libAddForm()">+ New exercise</button></div><div class="card-b">
-    <input class="in" placeholder="Search…" value="${esc(q||"")}" oninput="renderLibraryScreen(this.value)" style="margin-bottom:10px">`;
-  if(!items.length)h+=`<div class="muted">No exercises${q?" match":""} yet.</div>`;
-  items.forEach(e=>{h+=`<div class="libitem"><div class="li-nm"><b>${esc(e.name)}</b>${e.dose?` <span class="muted">· ${esc(e.dose)}</span>`:""}${e.cue?`<div class="muted">${esc(e.cue)}</div>`:""}</div><span class="kindbadge ${esc(e.kind||"strength")}">${esc(e.kind||"")}</span><button class="btn ghost sm" onclick="libEditForm('${e.id}')">Edit</button><button class="btn danger sm" onclick="libDelete('${e.id}')">✕</button></div>`;});
+function renderLibraryScreen(){
+  const ql=libQ.toLowerCase();
+  const items=library.filter(e=>(!ql||(e.name||"").toLowerCase().includes(ql))&&(!libKind||e.kind===libKind)&&(!libCat||e.category===libCat));
+  const cats=libCategories();
+  let h=`<div class="card"><div class="card-h"><h2>Exercise library</h2><span class="muted">${library.length} total</span><button class="btn primary sm" onclick="libAddForm()">+ New exercise</button></div><div class="card-b">
+    <div class="row2" style="margin-bottom:8px">
+      <input class="in" placeholder="Search…" value="${esc(libQ)}" oninput="libQ=this.value;renderLibraryScreen()">
+      <select class="in" style="max-width:150px" onchange="libKind=this.value;renderLibraryScreen()"><option value="">All kinds</option>${KINDS.map(k=>`<option ${libKind===k?"selected":""}>${k}</option>`).join("")}</select>
+      <select class="in" style="max-width:180px" onchange="libCat=this.value;renderLibraryScreen()"><option value="">All categories</option>${cats.map(c=>`<option ${libCat===c?"selected":""}>${esc(c)}</option>`).join("")}</select>
+    </div>
+    <div class="muted" style="margin-bottom:8px">${items.length} shown</div>`;
+  if(!items.length)h+=`<div class="muted">No exercises match these filters.</div>`;
+  items.forEach(e=>{h+=`<div class="libitem"><div class="li-nm"><b>${esc(e.name)}</b>${e.dose?` <span class="muted">· ${esc(e.dose)}</span>`:""}${e.cue?`<div class="muted">${esc(e.cue)}</div>`:""}</div>${e.category?`<span class="kindbadge" style="background:#efe9f5;color:#6a4f8f">${esc(e.category)}</span>`:""}<span class="kindbadge ${esc(e.kind||"strength")}">${esc(e.kind||"")}</span><button class="btn ghost sm" onclick="libEditForm('${e.id}')">Edit</button><button class="btn danger sm" onclick="libDelete('${e.id}')">✕</button></div>`;});
   h+=`</div></div>`;document.getElementById("app").innerHTML=h;
 }
 function libAddForm(){libForm(null);}
 function libEditForm(id){libForm(library.find(e=>e.id===id));}
 function libForm(e){
-  const ed=e||{name:"",kind:"strength",dose:"",cue:"",note:""};
+  const ed=e||{name:"",kind:"strength",dose:"",cue:"",note:"",category:""};
+  const cats=libCategories();
   let h=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-h"><h3>${e?"Edit":"New"} exercise</h3><button class="btn ghost sm" onclick="closeModal()">Close</button></div><div class="modal-b">
     <label class="fld"><span>Name</span><input class="in" id="lfName" value="${esc(ed.name)}"></label>
     <div class="row2"><label class="fld"><span>Kind</span><select class="in" id="lfKind">${KINDS.map(k=>`<option ${ed.kind===k?"selected":""}>${k}</option>`).join("")}</select></label>
     <label class="fld"><span>Default dose</span><input class="in" id="lfDose" value="${esc(ed.dose||"")}" placeholder="3 × 10"></label></div>
+    <label class="fld"><span>Category (for filtering)</span><input class="in" id="lfCat" list="catlist" value="${esc(ed.category||"")}" placeholder="e.g. crossfit, hyrox, accessory"><datalist id="catlist">${cats.map(c=>`<option value="${esc(c)}">`).join("")}</datalist></label>
     <label class="fld"><span>Form cue</span><input class="in" id="lfCue" value="${esc(ed.cue||"")}"></label>
     <label class="fld"><span>Default coach note</span><input class="in" id="lfNote" value="${esc(ed.note||"")}"></label>
     <div class="row2" style="margin-top:10px"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="libSave(${e?`'${e.id}'`:"null"})">Save</button></div>
   </div></div></div>`;document.getElementById("modalRoot").innerHTML=h;
 }
 async function libSave(id){
-  const rec={name:document.getElementById("lfName").value.trim(),kind:document.getElementById("lfKind").value,dose:document.getElementById("lfDose").value||null,cue:document.getElementById("lfCue").value||null,note:document.getElementById("lfNote").value||null};
+  const rec={name:document.getElementById("lfName").value.trim(),kind:document.getElementById("lfKind").value,dose:document.getElementById("lfDose").value||null,cue:document.getElementById("lfCue").value||null,note:document.getElementById("lfNote").value||null,category:document.getElementById("lfCat").value.trim()||null};
   if(!rec.name){toast("Name required",true);return;}
-  try{if(id)await DB.libUpdate(id,rec);else await DB.libCreate(rec);library=await DB.libList();closeModal();renderLibraryScreen("");toast("Saved ✓");}
+  try{if(id)await DB.libUpdate(id,rec);else await DB.libCreate(rec);library=await DB.libList();closeModal();renderLibraryScreen();toast("Saved ✓");}
   catch(e){toast(/duplicate|unique/i.test(e.message)?"Name already in library":"Save failed",true);}
 }
-async function libDelete(id){if(!confirm("Remove from library?"))return;try{await DB.libRemove(id);library=library.filter(e=>e.id!==id);renderLibraryScreen("");toast("Removed");}catch(e){toast("Delete failed",true);}}
+async function libDelete(id){if(!confirm("Remove from library?"))return;try{await DB.libRemove(id);library=library.filter(e=>e.id!==id);renderLibraryScreen();toast("Removed");}catch(e){toast("Delete failed",true);}}
+
+/* ---------------- GROUPS (saved reusable blocks) ---------------- */
+async function openGroups(){
+  editing=null;editingGroup=null;
+  document.getElementById("hCrumb").style.display="block";document.getElementById("hTitle").textContent="Exercise groups";
+  document.getElementById("savebar").style.display="none";
+  try{groups=await DB.grpList();}catch(e){groups=[];}
+  if(!library.length){try{library=await DB.libList();}catch(e){}}
+  renderGroupsScreen();
+}
+function renderGroupsScreen(){
+  let h=`<div class="card"><div class="card-h"><h2>Exercise groups</h2><span class="muted">${groups.length} saved</span><button class="btn primary sm" onclick="newGroup()">+ New group</button></div><div class="card-b">
+    <p class="muted" style="margin-top:0">A group is a reusable block — a named set of exercises with their sets &amp; reps. Save one here, then drop it onto any day (or several weekdays at once) when editing a program.</p>`;
+  if(!groups.length)h+=`<div class="muted">No groups yet.</div>`;
+  groups.forEach(g=>{const items=g.items||[];h+=`<div class="libitem"><div class="li-nm"><b>${esc(g.name)}</b> <span class="muted">· ${items.length} exercise${items.length!==1?"s":""}</span><div class="muted">${esc(items.map(i=>i.name).slice(0,4).join(", "))}${items.length>4?"…":""}</div></div><span class="kindbadge ${esc(g.kind||"strength")}">${esc(g.kind||"")}</span><button class="btn ghost sm" onclick="editGroup('${g.id}')">Edit</button><button class="btn danger sm" onclick="grpDelete('${g.id}')">✕</button></div>`;});
+  h+=`</div></div>`;document.getElementById("app").innerHTML=h;
+}
+function newGroup(){editingGroup={name:"",kind:"strength",tag:"Strength",items:[]};renderGroupEditor();}
+function editGroup(id){editingGroup=JSON.parse(JSON.stringify(groups.find(g=>g.id===id)));if(!editingGroup.items)editingGroup.items=[];renderGroupEditor();}
+function renderGroupEditor(){
+  const g=editingGroup;
+  let h=`<div class="card"><div class="card-h"><h2>${g.id?"Edit group":"New group"}</h2></div><div class="card-b">
+    <div class="row2"><label class="fld"><span>Group name</span><input class="in" id="gName" value="${esc(g.name)}" placeholder="e.g. Lower body strength"></label>
+      <label class="fld"><span>Block kind (color)</span><select class="in" id="gKind">${KINDS.map(k=>`<option ${g.kind===k?"selected":""}>${k}</option>`).join("")}</select></label>
+      <label class="fld"><span>Tag label</span><input class="in" id="gTag" value="${esc(g.tag||"")}" placeholder="Strength"></label></div>
+    <div style="margin-top:4px">`;
+  (g.items||[]).forEach((e,i)=>{h+=renderGroupItem(i,e);});
+  h+=`</div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary sm" onclick="gAddFromLib()">+ Add from library</button><button class="btn light sm" onclick="gAddBlank()">+ Blank exercise</button></div>
+    <div class="row2" style="margin-top:14px"><button class="btn light" onclick="openGroups()">Cancel</button><button class="btn primary" onclick="saveGroup()">Save group</button></div>
+  </div></div>`;document.getElementById("app").innerHTML=h;document.getElementById("savebar").style.display="none";
+  document.getElementById("gName").onchange=e=>editingGroup.name=e.target.value;
+  document.getElementById("gKind").onchange=e=>editingGroup.kind=e.target.value;
+  document.getElementById("gTag").onchange=e=>editingGroup.tag=e.target.value;
+}
+function renderGroupItem(i,e){
+  return `<div class="ex"><div class="reorder"><button title="Up" onclick="gMove(${i},-1)">▲</button><button title="Down" onclick="gMove(${i},1)">▼</button></div>
+   <div class="grow"><div class="row2">
+     <input class="in" value="${esc(e.name||"")}" placeholder="Exercise name" onchange="gSet(${i},'name',this.value)">
+     <input class="in" style="max-width:130px" value="${esc(e.dose||"")}" placeholder="Sets×reps / dose" onchange="gSet(${i},'dose',this.value)"></div>
+     <input class="in" style="margin-top:6px" value="${esc(e.cue||"")}" placeholder="Form cue" onchange="gSet(${i},'cue',this.value)">
+     <input class="in" style="margin-top:6px" value="${esc(e.coachNote||"")}" placeholder="Coach note" onchange="gSet(${i},'coachNote',this.value)"></div>
+   <button class="btn danger sm" onclick="gDel(${i})">✕</button></div>`;
+}
+function gSet(i,f,v){editingGroup.items[i][f]=v;}
+function gAddBlank(){editingGroup.items.push({name:"",dose:"",cue:"",coachNote:""});renderGroupEditor();}
+function gDel(i){editingGroup.items.splice(i,1);renderGroupEditor();}
+function gMove(i,dir){const a=editingGroup.items,j=i+dir;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];renderGroupEditor();}
+async function gAddFromLib(){if(!library.length){try{library=await DB.libList();}catch(e){}}gPickKind="";renderGroupPicker("","");}
+function renderGroupPicker(q,cat){
+  const ql=(q||"").toLowerCase();
+  const items=library.filter(e=>(!ql||(e.name||"").toLowerCase().includes(ql))&&(!gPickKind||e.kind===gPickKind)&&(!cat||e.category===cat));
+  const cats=libCategories();
+  let h=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-h"><h3>Add to group</h3><button class="btn ghost sm" onclick="closeModal()">Close</button></div><div class="modal-b">
+    <input class="in" placeholder="Search…" value="${esc(q||"")}" oninput="renderGroupPicker(this.value,'${esc(cat||"")}')" style="margin-bottom:8px">
+    <div class="row2" style="margin-bottom:10px">
+      <select class="in" onchange="gPickKind=this.value;renderGroupPicker('${esc(q||"")}','${esc(cat||"")}')"><option value="">All kinds</option>${KINDS.map(k=>`<option ${gPickKind===k?"selected":""}>${k}</option>`).join("")}</select>
+      <select class="in" onchange="renderGroupPicker('${esc(q||"")}',this.value)"><option value="">All categories</option>${cats.map(c=>`<option ${cat===c?"selected":""}>${esc(c)}</option>`).join("")}</select></div>`;
+  if(!items.length)h+=`<div class="muted">No matches.</div>`;
+  items.forEach(e=>{h+=`<div class="libitem" onclick='gPick(${JSON.stringify(e).replace(/'/g,"&#39;")})'><div class="li-nm"><b>${esc(e.name)}</b>${e.dose?` <span class="muted">· ${esc(e.dose)}</span>`:""}</div>${e.category?`<span class="kindbadge" style="background:#efe9f5;color:#6a4f8f">${esc(e.category)}</span>`:""}<span class="kindbadge ${esc(e.kind||"strength")}">${esc(e.kind||"")}</span></div>`;});
+  h+=`</div></div></div>`;document.getElementById("modalRoot").innerHTML=h;
+}
+function gPick(e){editingGroup.items.push({name:e.name||"",dose:e.dose||"",cue:e.cue||"",coachNote:e.note||""});closeModal();renderGroupEditor();}
+async function saveGroup(){
+  const g=editingGroup;if(!g.name||!g.name.trim()){toast("Give the group a name",true);return;}
+  const rec={name:g.name.trim(),kind:g.kind||"strength",tag:g.tag||null,items:g.items||[]};
+  try{if(g.id)await DB.grpUpdate(g.id,rec);else await DB.grpCreate(rec);groups=await DB.grpList();toast("Group saved ✓");openGroups();}
+  catch(e){toast("Save failed: "+e.message.slice(0,60),true);}
+}
+async function grpDelete(id){if(!confirm("Delete this group?"))return;try{await DB.grpRemove(id);groups=groups.filter(g=>g.id!==id);renderGroupsScreen();toast("Deleted");}catch(e){toast("Delete failed",true);}}
+
+/* add a saved group to one or more weekdays of the current athlete's program */
+async function openAddGroup(di){
+  if(!groups.length){try{groups=await DB.grpList();}catch(e){groups=[];}}
+  const curDow=editing.program.days[di]?editing.program.days[di].dow:"Mon";
+  agSel={groupId:(groups[0]?groups[0].id:null),dows:[curDow]};
+  renderAddGroup();
+}
+function renderAddGroup(){
+  let h=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-h"><h3>Add a saved group</h3><button class="btn ghost sm" onclick="closeModal()">Close</button></div><div class="modal-b">`;
+  if(!groups.length)h+=`<div class="muted">No groups saved yet. Create one from the roster screen → 🧩 Groups.</div>`;
+  else{
+    h+=`<div class="muted" style="margin-bottom:6px">Choose a group</div>`;
+    groups.forEach(g=>{h+=`<div class="libitem" onclick="agSel.groupId='${g.id}';renderAddGroup()" style="${agSel.groupId===g.id?'border-color:var(--navy);box-shadow:0 0 0 1.5px var(--navy) inset':''}"><div class="li-nm"><b>${esc(g.name)}</b> <span class="muted">· ${(g.items||[]).length} ex</span></div><span class="kindbadge ${esc(g.kind||'strength')}">${esc(g.kind||'')}</span></div>`;});
+    h+=`<div class="muted" style="margin:12px 0 6px">Add to which days? (repeats every week)</div><div class="row2" style="flex-wrap:wrap">`;
+    DOWS.forEach(d=>{const on=agSel.dows.includes(d);h+=`<button class="btn ${on?'primary':'light'} sm" style="min-width:60px" onclick="toggleAgDow('${d}')">${d}</button>`;});
+    h+=`</div><div class="row2" style="margin-top:14px"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="applyAddGroup()">Add to ${agSel.dows.length} day${agSel.dows.length!==1?'s':''}</button></div>`;
+  }
+  h+=`</div></div></div>`;document.getElementById("modalRoot").innerHTML=h;
+}
+function toggleAgDow(d){const i=agSel.dows.indexOf(d);if(i>=0)agSel.dows.splice(i,1);else agSel.dows.push(d);renderAddGroup();}
+function applyAddGroup(){
+  const g=groups.find(x=>x.id===agSel.groupId);if(!g){toast("Pick a group",true);return;}
+  if(!agSel.dows.length){toast("Pick at least one day",true);return;}
+  agSel.dows.forEach(dow=>{
+    let day=editing.program.days.find(d=>d.dow===dow);
+    if(!day){day={dow,focus:g.name,badge:"",blocks:[]};editing.program.days.push(day);}
+    day.blocks=day.blocks||[];
+    day.blocks.push({kind:g.kind||"strength",tag:g.tag||g.kind||"",title:g.name,sub:"",ex:JSON.parse(JSON.stringify(g.items||[]))});
+  });
+  editing.program.days.sort((a,b)=>{const ia=DOWS.indexOf(a.dow),ib=DOWS.indexOf(b.dow);return (ia<0?99:ia)-(ib<0?99:ib);});
+  const n=agSel.dows.length;closeModal();renderEditor();toast(`Added “${g.name}” to ${n} day${n!==1?"s":""} — remember to Save program`);
+}
 
 /* ---------------- LOGS + SETTINGS ---------------- */
 async function loadLogs(){
