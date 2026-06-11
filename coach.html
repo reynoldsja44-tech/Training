@@ -88,6 +88,8 @@
   .calcell.done .tag2{background:#e3f2ee;color:#1f6f63;}
   .calcell.planned .tag2{background:#eef2f8;color:#3b6ea5;}
   .calcell.rest .tag2{background:#f0ece2;color:#8a7a55;}
+  .calcell.custom{border-color:#cdbfe0;}
+  .calcell.custom .tag2{background:#efe9f5;color:#6a4f8f;}
   .detail{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;}
   .detail h3{font-family:"Fraunces",serif;font-size:18px;margin:0 0 8px;}
   .pill{display:inline-block;font-size:12px;font-weight:700;border-radius:7px;padding:2px 8px;margin-left:6px;}
@@ -157,7 +159,7 @@ const DEMO_PROG={days:[
   {dow:"Tue",focus:"Cardio (Zone 2)",badge:"55 min",blocks:[{kind:"cardio",tag:"Cardio",title:"Zone 2",sub:"25–40 min",note:"Conversational pace.",ex:[{name:"Zone 2 session",dose:"25–40 min",cue:""}]}]},
   {dow:"Sun",focus:"Rest",badge:"—",rest:true,blocks:[{kind:"accessory",tag:"Optional",title:"Rest",sub:"",note:"Recover.",ex:[]}]}]};
 function makeMock(){
-  let aths=[{id:"m1",slug:"mom",name:"Mom (82)",program:JSON.parse(JSON.stringify(DEMO_PROG))}];
+  let aths=[{id:"m1",slug:"mom",name:"Mom (82)",program:JSON.parse(JSON.stringify(DEMO_PROG)),overrides:{}}];
   let today=new Date();function iso(d){return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);}
   let y=iso(new Date(today.getTime()-2*864e5));
   let logs=[{id:"l1",athlete_slug:"mom",log_date:y,day_dow:"Mon",day_focus:"Strength A + Arms",exercise_name:"Goblet squat to box (DB)",set_number:1,reps:"10",weight:25,note:"Felt good"},
@@ -195,6 +197,12 @@ let roster=[], editing=null, editTab="calendar", athLogs=[], library=[];
 let calMonth=new Date(), selCalDate=null;
 let libQ="", libKind="", libCat="", pickKind="";
 let groups=[], editingGroup=null, gPickKind="", agSel={groupId:null,dows:[]};
+let progMode="weekly", progDate=null;
+function fullDowName(d){return {Mon:"Monday",Tue:"Tuesday",Wed:"Wednesday",Thu:"Thursday",Fri:"Friday",Sat:"Saturday",Sun:"Sunday"}[d]||d;}
+function curDays(){
+  if(progMode==="date"){const date=progDate||todayISO();if(!editing.overrides)editing.overrides={};if(!editing.overrides[date])editing.overrides[date]={focus:"",badge:"",blocks:[]};return [editing.overrides[date]];}
+  return editing.program.days;
+}
 function libCategories(){return [...new Set(library.map(e=>e.category).filter(Boolean))].sort();}
 function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function toast(m,e){const t=document.getElementById("toast");t.textContent=m;t.className="toast show"+(e?" err":"");setTimeout(()=>t.className="toast",2200);}
@@ -203,8 +211,13 @@ function iso(d){return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOStri
 function todayISO(){return iso(new Date());}
 function pad(n){return String(n).padStart(2,"0");}
 
-async function start(){ await goRoster(); }
-async function goRoster(){
+/* keep the cursor in a search box after the list re-renders */
+function reFocus(id,pos){const n=document.getElementById(id);if(n){n.focus();try{n.setSelectionRange(pos,pos);}catch(_){}}}
+function libSearchInput(el){const p=el.selectionStart;libQ=el.value;renderLibraryScreen();reFocus("libSearch",p);}
+function pickerSearchInput(el,di,bi,cat){const p=el.selectionStart;renderPicker(di,bi,el.value,cat);reFocus("pickerSearch",p);}
+function grpPickerSearchInput(el,cat){const p=el.selectionStart;renderGroupPicker(el.value,cat);reFocus("grpPickerSearch",p);}
+
+async function start(){ await goRoster(); }async function goRoster(){
   editing=null;
   document.getElementById("hCrumb").style.display="none";
   document.getElementById("hTitle").textContent="Coach Dashboard";
@@ -247,7 +260,8 @@ async function createAthlete(){
 async function openAthlete(id){
   editing=JSON.parse(JSON.stringify(roster.find(a=>a.id===id)));
   if(!editing.program||!editing.program.days)editing.program={days:[]};
-  editTab="calendar";selCalDate=null;calMonth=new Date();
+  if(!editing.overrides)editing.overrides={};
+  editTab="calendar";selCalDate=null;calMonth=new Date();progMode="weekly";progDate=null;
   document.getElementById("hCrumb").style.display="block";
   document.getElementById("hTitle").textContent=editing.name;
   try{athLogs=await DB.logs(editing.slug);}catch(e){athLogs=[];}
@@ -273,6 +287,8 @@ function setTab(t){editTab=t;renderEditor();}
 /* ---------------- CALENDAR ---------------- */
 function logsByDate(){const m={};athLogs.forEach(l=>{(m[l.log_date]=m[l.log_date]||[]).push(l);});return m;}
 function programForDow(dow){return (editing.program.days||[]).find(d=>d.dow===dow);}
+function overrideFor(ds){const o=editing.overrides&&editing.overrides[ds];if(o&&(o.rest||(o.blocks&&o.blocks.length)||(o.focus&&o.focus.trim())))return o;return null;}
+function editDateOverride(ds){editTab="program";progMode="date";progDate=ds;renderEditor();}
 function renderCalendar(){
   const y=calMonth.getFullYear(),mo=calMonth.getMonth();
   const monthName=calMonth.toLocaleString(undefined,{month:"long",year:"numeric"});
@@ -297,8 +313,10 @@ function renderCalendar(){
       const isRest=dayLogs.some(l=>(l.day_focus||"").toLowerCase().includes("rest"))&&dayLogs.length===1;
       cls+=isRest?" rest":" done";label=isRest?"Rest":(dayLogs[0].day_focus||dayLogs[0].day_dow||"Logged");
     }else if(!past){
-      const pd=programForDow(DOW_OF[new Date(ds+"T00:00:00").getDay()]);
-      if(pd){if(pd.rest){cls+=" rest";label="Rest";}else{cls+=" planned";label=pd.focus||"Planned";}}
+      const ov=overrideFor(ds);
+      if(ov){if(ov.rest){cls+=" rest";label="★ Rest";}else{cls+=" custom";label="★ "+(ov.focus||"Custom");}}
+      else{const pd=programForDow(DOW_OF[new Date(ds+"T00:00:00").getDay()]);
+        if(pd){if(pd.rest){cls+=" rest";label="Rest";}else{cls+=" planned";label=pd.focus||"Planned";}}}
     }
     if(isToday)cls+=" today";if(ds===selCalDate)cls+=" sel";
     h+=`<div class="${cls}" onclick="selCal('${ds}')"><span class="dnum">${d}</span>${label?`<span class="tag2">${esc(label)}</span>`:""}</div>`;
@@ -317,12 +335,21 @@ function renderCalDetail(ds){
     Object.keys(byBlock).forEach(bt=>{h+=`<div class="logday"><h4>${esc(bt)}</h4>`;byBlock[bt].forEach(l=>{const cardio=l.duration_min!=null||l.rpe!=null;h+=`<div class="logrow"><span class="lx">${esc(l.exercise_name)}</span><span class="v">${cardio?(esc(l.duration_min||"–")+" min"+(l.rpe!=null?", RPE "+esc(l.rpe):"")):(esc(l.reps||"–")+" reps"+(l.weight!=null?" @ "+esc(l.weight)+" lb":""))}</span>${l.note?`<span class="v">📝 ${esc(l.note)}</span>`:""}</div>`;});h+=`</div>`;});
     return h;
   }
+  const ov=overrideFor(ds);
+  if(ov){
+    let h=`<h3>${esc(nice)} <span class="pill" style="background:#efe9f5;color:#6a4f8f">★ custom for this date</span></h3>`;
+    if(ov.rest)h+=`<div class="muted">Rest day.</div>`;
+    else{h+=`<div class="muted" style="margin-bottom:8px">${esc(ov.focus||"")}</div>`;(ov.blocks||[]).forEach(b=>{h+=`<div class="logday"><h4>${esc(b.title||b.tag||"Block")}</h4>`;(b.ex||[]).forEach(e=>{h+=`<div class="logrow"><span class="lx">${esc(e.name)}</span><span class="v">${esc(e.dose||"")}</span></div>`;});h+=`</div>`;});}
+    h+=`<div style="margin-top:10px"><button class="btn light sm" onclick="editDateOverride('${ds}')">Edit this date</button></div>`;
+    return h;
+  }
   const pd=programForDow(DOW_OF[dObj.getDay()]);
-  if(!pd)return `<h3>${esc(nice)}</h3><div class="muted">${past?"Nothing was logged this day.":"No workout scheduled for this weekday."}</div>`;
-  if(pd.rest)return `<h3>${esc(nice)} <span class="pill planned">${past?"":"planned"}</span></h3><div class="muted">Rest day.</div>`;
+  const addBtn=!past?`<div style="margin-top:10px"><button class="btn light sm" onclick="editDateOverride('${ds}')">★ Add a one-off for this date</button></div>`:"";
+  if(!pd)return `<h3>${esc(nice)}</h3><div class="muted">${past?"Nothing was logged this day.":"No workout scheduled for this weekday."}</div>${addBtn}`;
+  if(pd.rest)return `<h3>${esc(nice)} <span class="pill planned">${past?"":"planned"}</span></h3><div class="muted">Rest day.</div>${addBtn}`;
   let h=`<h3>${esc(nice)} <span class="pill ${past?'':'planned'}">${past?"not logged":"planned"}</span></h3><div class="muted" style="margin-bottom:8px">${esc(pd.focus||"")}</div>`;
   (pd.blocks||[]).forEach(b=>{h+=`<div class="logday"><h4>${esc(b.title||b.tag||"Block")}</h4>`;(b.ex||[]).forEach(e=>{h+=`<div class="logrow"><span class="lx">${esc(e.name)}</span><span class="v">${esc(e.dose||"")}</span></div>`;});h+=`</div>`;});
-  return h;
+  return h+addBtn;
 }
 function calNav(dir){calMonth=new Date(calMonth.getFullYear(),calMonth.getMonth()+dir,1);renderEditor();}
 function calToday(){calMonth=new Date();selCalDate=todayISO();renderEditor();}
@@ -332,6 +359,13 @@ function selCal(ds){selCalDate=ds;document.getElementById("calDetail").innerHTML
 /* ---------------- PROGRAM EDITOR ---------------- */
 function renderProgramEditor(){
   let h=`<div class="card"><div class="card-b">`;
+  h+=`<div class="cal-top" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
+    <button class="btn ${progMode==='weekly'?'primary':'light'} sm" onclick="setProgMode('weekly')">Weekly template</button>
+    <span class="muted">— or a one-off for a specific date:</span>
+    <input type="date" class="in" style="width:auto;padding:7px 9px" value="${progDate||todayISO()}" min="${todayISO()}" onchange="setProgDate(this.value)">
+    ${progMode==='date'?`<span class="kindbadge" style="background:#efe9f5;color:#6a4f8f">editing ${esc(progDate||"")}</span>`:""}
+  </div>`;
+  if(progMode==='date'){h+=renderDateOverrideEditor();h+=`</div></div>`;return h;}
   editing.program.days.forEach((d,di)=>{
     h+=`<div class="day"><div class="day-h">
       <span class="dow">${esc(d.dow)}</span>
@@ -347,6 +381,41 @@ function renderProgramEditor(){
   });
   h+=`<button class="btn light" onclick="addDay()">+ Add day</button></div></div>`;
   return h;
+}
+function setProgMode(m){progMode=m;renderEditor();}
+function setProgDate(v){if(!v)return;progDate=v;progMode="date";renderEditor();}
+function renderDateOverrideEditor(){
+  const date=progDate||todayISO();
+  if(!editing.overrides)editing.overrides={};
+  const existed=!!editing.overrides[date];
+  if(!editing.overrides[date])editing.overrides[date]={focus:"",badge:"",blocks:[]};
+  const d=editing.overrides[date];
+  const dow=DOW_OF[new Date(date+"T00:00:00").getDay()];
+  const weeklyDay=(editing.program.days||[]).find(x=>x.dow===dow);
+  const nice=new Date(date+"T00:00:00").toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
+  let h=`<div class="day" style="border-color:#cdbfe0"><div class="day-h" style="background:#efe9f5">
+      <span class="dow" style="width:auto;color:#6a4f8f">${esc(nice)}</span>
+      <input class="in focusin" value="${esc(d.focus||"")}" placeholder="Focus (e.g. 30-min run)" onchange="setDay(0,'focus',this.value)">
+      <input class="in" style="max-width:110px" value="${esc(d.badge||"")}" placeholder="Time" onchange="setDay(0,'badge',this.value)">
+      <label class="restbox" title="Make this date a rest day"><input type="checkbox" ${d.rest?"checked":""} onchange="setDay(0,'rest',this.checked)">Rest day</label>
+      <button class="btn danger sm" title="Remove this date's custom plan (reverts to weekly)" onclick="removeOverride()">Remove one-off</button>
+    </div><div class="day-b">
+    <div class="muted" style="margin-bottom:8px">This replaces the weekly <b>${esc(fullDowName(dow))}</b> plan for <b>${esc(date)}</b> only.${(weeklyDay&&(!d.blocks||!d.blocks.length))?` · <a href="#" onclick="prefillOverride();return false;">Prefill from weekly ${esc(dow)}</a>`:""}</div>
+    <input class="in" style="margin-bottom:8px" value="${esc(d.note||"")}" placeholder="Day note (optional)" onchange="setDay(0,'note',this.value)">`;
+  (d.blocks||[]).forEach((b,bi)=>{h+=renderBlockEditor(0,bi,b);});
+  h+=`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn light sm" onclick="addBlock(0)">+ Add block</button><button class="btn light sm" onclick="openAddGroup(0)">🧩 Add group</button></div>`;
+  h+=`</div></div><p class="muted">Tip: build a 🧩 group once, then drop it here for the date you want.</p>`;
+  return h;
+}
+function prefillOverride(){
+  const date=progDate;const dow=DOW_OF[new Date(date+"T00:00:00").getDay()];const wd=(editing.program.days||[]).find(x=>x.dow===dow);
+  if(!wd){toast("No weekly plan for that weekday",true);return;}
+  editing.overrides[date]={focus:wd.focus||"",badge:wd.badge||"",rest:wd.rest||false,note:wd.note||"",blocks:JSON.parse(JSON.stringify(wd.blocks||[]))};
+  renderEditor();toast("Prefilled from weekly "+dow);
+}
+function removeOverride(){
+  if(editing.overrides)delete editing.overrides[progDate];
+  progMode="weekly";renderEditor();toast("One-off removed — Save program to apply");
 }
 function renderBlockEditor(di,bi,b){
   let h=`<div class="blk" data-kind="${esc(b.kind||"strength")}"><div class="blk-top">
@@ -371,27 +440,34 @@ function renderExEditor(di,bi,ei,e){
       <input class="in" style="margin-top:6px" value="${esc(e.coachNote||"")}" placeholder="Coach note (your guidance)" onchange="setEx(${di},${bi},${ei},'coachNote',this.value)"></div>
     <div style="display:flex;flex-direction:column;gap:5px"><button class="btn ghost sm" title="Save to library" onclick="exToLibrary(${di},${bi},${ei})">★</button><button class="btn danger sm" onclick="delEx(${di},${bi},${ei})">✕</button></div></div>`;
 }
-function setDay(di,f,v){editing.program.days[di][f]=v;}
-function setBlk(di,bi,f,v){editing.program.days[di].blocks[bi][f]=v;if(f==="kind")renderEditor();}
-function setEx(di,bi,ei,f,v){editing.program.days[di].blocks[bi].ex[ei][f]=v;}
+function setDay(di,f,v){curDays()[di][f]=v;}
+function setBlk(di,bi,f,v){curDays()[di].blocks[bi][f]=v;if(f==="kind")renderEditor();}
+function setEx(di,bi,ei,f,v){curDays()[di].blocks[bi].ex[ei][f]=v;}
 function addDay(){const used=editing.program.days.map(d=>d.dow);const next=DOWS.find(d=>!used.includes(d))||"Day";editing.program.days.push({dow:next,focus:"",badge:"",blocks:[]});renderEditor();}
 function delDay(di){if(!confirm("Delete this whole day?"))return;editing.program.days.splice(di,1);renderEditor();}
 function moveDay(di,dir){const a=editing.program.days,j=di+dir;if(j<0||j>=a.length)return;[a[di],a[j]]=[a[j],a[di]];renderEditor();}
-function addBlock(di){(editing.program.days[di].blocks=editing.program.days[di].blocks||[]).push({kind:"strength",tag:"Strength",title:"New block",sub:"",ex:[]});renderEditor();}
-function delBlk(di,bi){editing.program.days[di].blocks.splice(bi,1);renderEditor();}
-function moveBlk(di,bi,dir){const a=editing.program.days[di].blocks,j=bi+dir;if(j<0||j>=a.length)return;[a[bi],a[j]]=[a[j],a[bi]];renderEditor();}
-function addBlankEx(di,bi){const b=editing.program.days[di].blocks[bi];(b.ex=b.ex||[]).push({name:"",dose:"",cue:"",coachNote:""});renderEditor();}
-function delEx(di,bi,ei){editing.program.days[di].blocks[bi].ex.splice(ei,1);renderEditor();}
-function moveEx(di,bi,ei,dir){const a=editing.program.days[di].blocks[bi].ex,j=ei+dir;if(j<0||j>=a.length)return;[a[ei],a[j]]=[a[j],a[ei]];renderEditor();}
+function addBlock(di){const D=curDays();(D[di].blocks=D[di].blocks||[]).push({kind:"strength",tag:"Strength",title:"New block",sub:"",ex:[]});renderEditor();}
+function delBlk(di,bi){curDays()[di].blocks.splice(bi,1);renderEditor();}
+function moveBlk(di,bi,dir){const a=curDays()[di].blocks,j=bi+dir;if(j<0||j>=a.length)return;[a[bi],a[j]]=[a[j],a[bi]];renderEditor();}
+function addBlankEx(di,bi){const b=curDays()[di].blocks[bi];(b.ex=b.ex||[]).push({name:"",dose:"",cue:"",coachNote:""});renderEditor();}
+function delEx(di,bi,ei){curDays()[di].blocks[bi].ex.splice(ei,1);renderEditor();}
+function moveEx(di,bi,ei,dir){const a=curDays()[di].blocks[bi].ex,j=ei+dir;if(j<0||j>=a.length)return;[a[ei],a[j]]=[a[j],a[ei]];renderEditor();}
 async function exToLibrary(di,bi,ei){
-  const e=editing.program.days[di].blocks[bi].ex[ei];const kind=editing.program.days[di].blocks[bi].kind||"strength";
+  const e=curDays()[di].blocks[bi].ex[ei];const kind=curDays()[di].blocks[bi].kind||"strength";
   if(!e.name||!e.name.trim()){toast("Give the exercise a name first",true);return;}
   try{await DB.libCreate({name:e.name.trim(),kind,dose:e.dose||null,cue:e.cue||null,note:e.coachNote||null});library=[];toast("Saved to library ★");}
   catch(e2){toast(/duplicate|unique/i.test(e2.message)?"Already in library":"Save failed",true);}
 }
+function cleanOverrides(){
+  if(!editing.overrides)return;
+  Object.keys(editing.overrides).forEach(k=>{const o=editing.overrides[k];
+    const empty=!o.rest&&!(o.blocks&&o.blocks.length)&&!(o.focus&&o.focus.trim())&&!(o.note&&o.note.trim());
+    if(empty)delete editing.overrides[k];});
+}
 async function saveProgram(){
   const btn=document.getElementById("saveProgBtn");btn.disabled=true;btn.textContent="Saving…";
-  try{await DB.update(editing.id,{program:editing.program,name:editing.name,slug:editing.slug});toast("Program saved ✓");const i=roster.findIndex(a=>a.id===editing.id);if(i>=0)roster[i]={...roster[i],program:editing.program};}
+  cleanOverrides();
+  try{await DB.update(editing.id,{program:editing.program,overrides:editing.overrides||{},name:editing.name,slug:editing.slug});toast("Saved ✓");const i=roster.findIndex(a=>a.id===editing.id);if(i>=0)roster[i]={...roster[i],program:editing.program,overrides:editing.overrides};}
   catch(e){toast("Save failed: "+e.message.slice(0,60),true);}
   btn.disabled=false;btn.textContent="Save program";
 }
@@ -406,7 +482,7 @@ function renderPicker(di,bi,q,cat){
   const items=library.filter(e=>(!ql||(e.name||"").toLowerCase().includes(ql))&&(!pickKind||e.kind===pickKind)&&(!cat||e.category===cat));
   const cats=libCategories();
   let h=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-h"><h3>Add from library</h3><button class="btn ghost sm" onclick="closeModal()">Close</button></div><div class="modal-b">
-    <input class="in" placeholder="Search exercises…" value="${esc(q||"")}" oninput="renderPicker(${di},${bi},this.value,'${esc(cat||"")}')" autofocus style="margin-bottom:8px">
+    <input class="in" id="pickerSearch" placeholder="Search exercises…" value="${esc(q||"")}" oninput="pickerSearchInput(this,${di},${bi},'${esc(cat||"")}')" autofocus style="margin-bottom:8px">
     <div class="row2" style="margin-bottom:10px">
       <select class="in" onchange="pickKind=this.value;renderPicker(${di},${bi},'${esc(q||"")}','${esc(cat||"")}')"><option value="">All kinds</option>${KINDS.map(k=>`<option ${pickKind===k?"selected":""}>${k}</option>`).join("")}</select>
       <select class="in" onchange="renderPicker(${di},${bi},'${esc(q||"")}',this.value)"><option value="">All categories</option>${cats.map(c=>`<option ${cat===c?"selected":""}>${esc(c)}</option>`).join("")}</select>
@@ -439,7 +515,7 @@ function renderLibraryScreen(){
   const cats=libCategories();
   let h=`<div class="card"><div class="card-h"><h2>Exercise library</h2><span class="muted">${library.length} total</span><button class="btn primary sm" onclick="libAddForm()">+ New exercise</button></div><div class="card-b">
     <div class="row2" style="margin-bottom:8px">
-      <input class="in" placeholder="Search…" value="${esc(libQ)}" oninput="libQ=this.value;renderLibraryScreen()">
+      <input class="in" id="libSearch" placeholder="Search…" value="${esc(libQ)}" oninput="libSearchInput(this)">
       <select class="in" style="max-width:150px" onchange="libKind=this.value;renderLibraryScreen()"><option value="">All kinds</option>${KINDS.map(k=>`<option ${libKind===k?"selected":""}>${k}</option>`).join("")}</select>
       <select class="in" style="max-width:180px" onchange="libCat=this.value;renderLibraryScreen()"><option value="">All categories</option>${cats.map(c=>`<option ${libCat===c?"selected":""}>${esc(c)}</option>`).join("")}</select>
     </div>
@@ -523,7 +599,7 @@ function renderGroupPicker(q,cat){
   const items=library.filter(e=>(!ql||(e.name||"").toLowerCase().includes(ql))&&(!gPickKind||e.kind===gPickKind)&&(!cat||e.category===cat));
   const cats=libCategories();
   let h=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-h"><h3>Add to group</h3><button class="btn ghost sm" onclick="closeModal()">Close</button></div><div class="modal-b">
-    <input class="in" placeholder="Search…" value="${esc(q||"")}" oninput="renderGroupPicker(this.value,'${esc(cat||"")}')" style="margin-bottom:8px">
+    <input class="in" id="grpPickerSearch" placeholder="Search…" value="${esc(q||"")}" oninput="grpPickerSearchInput(this,'${esc(cat||"")}')" style="margin-bottom:8px">
     <div class="row2" style="margin-bottom:10px">
       <select class="in" onchange="gPickKind=this.value;renderGroupPicker('${esc(q||"")}','${esc(cat||"")}')"><option value="">All kinds</option>${KINDS.map(k=>`<option ${gPickKind===k?"selected":""}>${k}</option>`).join("")}</select>
       <select class="in" onchange="renderGroupPicker('${esc(q||"")}',this.value)"><option value="">All categories</option>${cats.map(c=>`<option ${cat===c?"selected":""}>${esc(c)}</option>`).join("")}</select></div>`;
@@ -543,6 +619,7 @@ async function grpDelete(id){if(!confirm("Delete this group?"))return;try{await 
 /* add a saved group to one or more weekdays of the current athlete's program */
 async function openAddGroup(di){
   if(!groups.length){try{groups=await DB.grpList();}catch(e){groups=[];}}
+  if(progMode==='date'){agSel={groupId:(groups[0]?groups[0].id:null),dows:[],dateMode:true};renderAddGroup();return;}
   const curDow=editing.program.days[di]?editing.program.days[di].dow:"Mon";
   agSel={groupId:(groups[0]?groups[0].id:null),dows:[curDow]};
   renderAddGroup();
@@ -553,11 +630,20 @@ function renderAddGroup(){
   else{
     h+=`<div class="muted" style="margin-bottom:6px">Choose a group</div>`;
     groups.forEach(g=>{h+=`<div class="libitem" onclick="agSel.groupId='${g.id}';renderAddGroup()" style="${agSel.groupId===g.id?'border-color:var(--navy);box-shadow:0 0 0 1.5px var(--navy) inset':''}"><div class="li-nm"><b>${esc(g.name)}</b> <span class="muted">· ${(g.items||[]).length} ex</span></div><span class="kindbadge ${esc(g.kind||'strength')}">${esc(g.kind||'')}</span></div>`;});
-    h+=`<div class="muted" style="margin:12px 0 6px">Add to which days? (repeats every week)</div><div class="row2" style="flex-wrap:wrap">`;
-    DOWS.forEach(d=>{const on=agSel.dows.includes(d);h+=`<button class="btn ${on?'primary':'light'} sm" style="min-width:60px" onclick="toggleAgDow('${d}')">${d}</button>`;});
-    h+=`</div><div class="row2" style="margin-top:14px"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="applyAddGroup()">Add to ${agSel.dows.length} day${agSel.dows.length!==1?'s':''}</button></div>`;
+    if(agSel.dateMode){
+      h+=`<div class="row2" style="margin-top:14px"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="applyAddGroupDate()">Add to ${esc(progDate||"")}</button></div>`;
+    }else{
+      h+=`<div class="muted" style="margin:12px 0 6px">Add to which days? (repeats every week)</div><div class="row2" style="flex-wrap:wrap">`;
+      DOWS.forEach(d=>{const on=agSel.dows.includes(d);h+=`<button class="btn ${on?'primary':'light'} sm" style="min-width:60px" onclick="toggleAgDow('${d}')">${d}</button>`;});
+      h+=`</div><div class="row2" style="margin-top:14px"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="applyAddGroup()">Add to ${agSel.dows.length} day${agSel.dows.length!==1?'s':''}</button></div>`;
+    }
   }
   h+=`</div></div></div>`;document.getElementById("modalRoot").innerHTML=h;
+}
+function applyAddGroupDate(){
+  const g=groups.find(x=>x.id===agSel.groupId);if(!g){toast("Pick a group",true);return;}
+  const D=curDays();(D[0].blocks=D[0].blocks||[]).push({kind:g.kind||"strength",tag:g.tag||g.kind||"",title:g.name,sub:"",ex:JSON.parse(JSON.stringify(g.items||[]))});
+  closeModal();renderEditor();toast(`Added “${g.name}” to ${progDate}`);
 }
 function toggleAgDow(d){const i=agSel.dows.indexOf(d);if(i>=0)agSel.dows.splice(i,1);else agSel.dows.push(d);renderAddGroup();}
 function applyAddGroup(){

@@ -167,7 +167,7 @@ const DEMO_PROGRAM={days:[
     {kind:"cardio",tag:"Cardio",title:"Zone 2",sub:"25–40 min",note:"Conversational pace.",ex:[{name:"Zone 2 session",dose:"25–40 min",cue:"Talk-test pace"}]}]},
   {dow:"Sun",focus:"Rest",badge:"—",rest:true,blocks:[{kind:"accessory",tag:"Optional",title:"Rest",sub:"",note:"Recover.",ex:[]}]},
 ]};
-function makeDemoDB(){let athlete={id:"demo-1",slug:SLUG||"demo",name:"Demo Athlete",program:DEMO_PROGRAM};let logs=[];let n=0;
+function makeDemoDB(){let athlete={id:"demo-1",slug:SLUG||"demo",name:"Demo Athlete",program:DEMO_PROGRAM,overrides:{}};let logs=[];let n=0;
   return {async getAthlete(){return athlete;},async getLogs(){return logs.slice().sort((a,b)=>(b.log_date+b.created_at).localeCompare(a.log_date+a.created_at));},
     async insertLogs(rows){const out=rows.map(r=>({...r,id:"d"+(++n),created_at:new Date().toISOString()}));logs.push(...out);return out;},
     async updateLog(id,patch){const l=logs.find(x=>x.id===id);if(l)Object.assign(l,patch);},async deleteLog(id){logs=logs.filter(x=>x.id!==id);},async deleteLogsFor(slug,date,name){logs=logs.filter(x=>!(x.log_date===date&&x.exercise_name===name));}};}
@@ -188,6 +188,11 @@ function defaultSetCount(dose){const m=(dose||"").match(/(\d+)\s*[×x]/);return 
 function exKey(bi,ei){return bi+"-"+ei;}
 function exStyle(block,e){if((block.kind||"")==="cardio")return"cardio";if(/×|x/.test(e.dose||""))return"sets";return"done";}
 function programForDow(dow){return (program.days||[]).find(d=>d.dow===dow);}
+function dayForDate(date){
+  const ov=(athlete&&athlete.overrides)?athlete.overrides[date]:null;
+  if(ov&&(ov.rest||(ov.blocks&&ov.blocks.length)||(ov.focus&&String(ov.focus).trim())))return Object.assign({},ov,{dow:dowOf(date),_override:true});
+  return programForDow(dowOf(date));
+}
 function logsForDate(date){return logs.filter(l=>l.log_date===date);}
 function loggedForExOnDate(name,date){return logs.filter(l=>l.exercise_name===name&&l.log_date===date).sort((a,b)=>(a.set_number||0)-(b.set_number||0));}
 
@@ -245,7 +250,7 @@ function render(){
   if(mode==="history")return renderHistory();
   const app=document.getElementById("app");
   let html=renderDateNav();
-  const day=programForDow(dowOf(selDate));
+  const day=dayForDate(selDate);
   const past=selDate<todayISO();
   const dateLogs=logsForDate(selDate);
   if(past && !backfill){
@@ -258,7 +263,7 @@ function render(){
     app.innerHTML=html;document.getElementById("savebar").style.display="block";bindExtras();updateSaveCount();return;
   }
   const when=selDate>todayISO()?" · upcoming":(selDate===todayISO()?" · today":" · back-filling");
-  html+=`<div class="day-head"><h2>${niceDate(selDate)}</h2><div class="meta">${esc(day.focus||"")}${day.badge?" · "+esc(day.badge):""}${when}</div></div>`;
+  html+=`<div class="day-head"><h2>${niceDate(selDate)}</h2><div class="meta">${esc(day.focus||"")}${day.badge?" · "+esc(day.badge):""}${when}</div>${day._override?`<div class="logged-badge" style="background:#efe9f5;color:#6a4f8f;margin-top:6px">★ Custom plan for this date</div>`:""}</div>`;
   if(day.note)html+=`<div class="note-line">${esc(day.note)}</div>`;
   if(day.rest){
     html+=`<div class="block accessory"><div class="rest-day"><div class="big">Rest day</div>${esc((day.blocks[0]&&day.blocks[0].note)||"Enjoy the recovery.")}</div></div>`;
@@ -403,7 +408,7 @@ function updateSaveCount(){
 
 /* ---------------- save (idempotent per exercise on this date) ---------------- */
 async function saveWorkout(){
-  const day=programForDow(dowOf(selDate));
+  const day=dayForDate(selDate);
   const date=selDate;const rows=[];
   if(day && !day.rest){
     (day.blocks||[]).forEach((b,bi)=>(b.ex||[]).forEach((e,ei)=>{
