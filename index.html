@@ -265,7 +265,8 @@ function render(){
   const when=selDate>todayISO()?" · upcoming":(selDate===todayISO()?" · today":" · back-filling");
   html+=`<div class="day-head"><h2>${niceDate(selDate)}</h2><div class="meta">${esc(day.focus||"")}${day.badge?" · "+esc(day.badge):""}${when}</div>${day._override?`<div class="logged-badge" style="background:#efe9f5;color:#6a4f8f;margin-top:6px">★ Custom plan for this date</div>`:""}</div>`;
   if(day.note)html+=`<div class="note-line">${esc(day.note)}</div>`;
-  if(day.rest){
+  const hasEx=(day.blocks||[]).some(b=>(b.ex||[]).length>0);
+  if(day.rest && !hasEx){
     html+=`<div class="block accessory"><div class="rest-day"><div class="big">Rest day</div>${esc((day.blocks[0]&&day.blocks[0].note)||"Enjoy the recovery.")}</div></div>`;
     html+=renderExtras();app.innerHTML=html;bindExtras();document.getElementById("savebar").style.display="block";updateSaveCount();return;
   }

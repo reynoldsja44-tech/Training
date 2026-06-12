@@ -446,10 +446,10 @@ function setEx(di,bi,ei,f,v){curDays()[di].blocks[bi].ex[ei][f]=v;}
 function addDay(){const used=editing.program.days.map(d=>d.dow);const next=DOWS.find(d=>!used.includes(d))||"Day";editing.program.days.push({dow:next,focus:"",badge:"",blocks:[]});renderEditor();}
 function delDay(di){if(!confirm("Delete this whole day?"))return;editing.program.days.splice(di,1);renderEditor();}
 function moveDay(di,dir){const a=editing.program.days,j=di+dir;if(j<0||j>=a.length)return;[a[di],a[j]]=[a[j],a[di]];renderEditor();}
-function addBlock(di){const D=curDays();(D[di].blocks=D[di].blocks||[]).push({kind:"strength",tag:"Strength",title:"New block",sub:"",ex:[]});renderEditor();}
+function addBlock(di){const day=curDays()[di];day.rest=false;(day.blocks=day.blocks||[]).push({kind:"strength",tag:"Strength",title:"New block",sub:"",ex:[]});renderEditor();}
 function delBlk(di,bi){curDays()[di].blocks.splice(bi,1);renderEditor();}
 function moveBlk(di,bi,dir){const a=curDays()[di].blocks,j=bi+dir;if(j<0||j>=a.length)return;[a[bi],a[j]]=[a[j],a[bi]];renderEditor();}
-function addBlankEx(di,bi){const b=curDays()[di].blocks[bi];(b.ex=b.ex||[]).push({name:"",dose:"",cue:"",coachNote:""});renderEditor();}
+function addBlankEx(di,bi){const day=curDays()[di];day.rest=false;const b=day.blocks[bi];(b.ex=b.ex||[]).push({name:"",dose:"",cue:"",coachNote:""});renderEditor();}
 function delEx(di,bi,ei){curDays()[di].blocks[bi].ex.splice(ei,1);renderEditor();}
 function moveEx(di,bi,ei,dir){const a=curDays()[di].blocks[bi].ex,j=ei+dir;if(j<0||j>=a.length)return;[a[ei],a[j]]=[a[j],a[ei]];renderEditor();}
 async function exToLibrary(di,bi,ei){
@@ -497,7 +497,8 @@ function renderPicker(di,bi,q,cat){
   document.getElementById("modalRoot").innerHTML=h;
 }
 function pickEx(di,bi,e){
-  const b=editing.program.days[di].blocks[bi];(b.ex=b.ex||[]).push({name:e.name||"",dose:e.dose||"",cue:e.cue||"",coachNote:e.note||""});
+  const day=curDays()[di];day.rest=false;
+  const b=day.blocks[bi];(b.ex=b.ex||[]).push({name:e.name||"",dose:e.dose||"",cue:e.cue||"",coachNote:e.note||""});
   closeModal();renderEditor();toast("Added "+(e.name||"exercise"));
 }
 function closeModal(){document.getElementById("modalRoot").innerHTML="";}
@@ -642,7 +643,7 @@ function renderAddGroup(){
 }
 function applyAddGroupDate(){
   const g=groups.find(x=>x.id===agSel.groupId);if(!g){toast("Pick a group",true);return;}
-  const D=curDays();(D[0].blocks=D[0].blocks||[]).push({kind:g.kind||"strength",tag:g.tag||g.kind||"",title:g.name,sub:"",ex:JSON.parse(JSON.stringify(g.items||[]))});
+  const D=curDays();D[0].rest=false;(D[0].blocks=D[0].blocks||[]).push({kind:g.kind||"strength",tag:g.tag||g.kind||"",title:g.name,sub:"",ex:JSON.parse(JSON.stringify(g.items||[]))});
   closeModal();renderEditor();toast(`Added “${g.name}” to ${progDate}`);
 }
 function toggleAgDow(d){const i=agSel.dows.indexOf(d);if(i>=0)agSel.dows.splice(i,1);else agSel.dows.push(d);renderAddGroup();}
@@ -652,7 +653,7 @@ function applyAddGroup(){
   agSel.dows.forEach(dow=>{
     let day=editing.program.days.find(d=>d.dow===dow);
     if(!day){day={dow,focus:g.name,badge:"",blocks:[]};editing.program.days.push(day);}
-    day.blocks=day.blocks||[];
+    day.rest=false;day.blocks=day.blocks||[];
     day.blocks.push({kind:g.kind||"strength",tag:g.tag||g.kind||"",title:g.name,sub:"",ex:JSON.parse(JSON.stringify(g.items||[]))});
   });
   editing.program.days.sort((a,b)=>{const ia=DOWS.indexOf(a.dow),ib=DOWS.indexOf(b.dow);return (ia<0?99:ia)-(ib<0?99:ib);});
