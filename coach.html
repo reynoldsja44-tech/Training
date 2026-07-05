@@ -120,13 +120,13 @@
 <body>
 <header><div class="inner">
   <h1 id="hTitle">Coach Dashboard</h1>
-  <span class="crumb" id="hCrumb" onclick="goRoster()" style="display:none">← All athletes</span>
+  <span class="crumb" id="hCrumb" onclick="doneEditing()" style="display:none">← All athletes</span>
 </div></header>
 
 <div class="wrap"><div id="app"></div></div>
 <div class="savebar" id="savebar" style="display:none"><div class="inner">
   <span class="muted" id="saveHint"></span>
-  <button class="btn light" onclick="goRoster()">Done</button>
+  <button class="btn light" onclick="doneEditing()">Done</button>
   <button class="btn primary" id="saveProgBtn">Save program</button>
 </div></div>
 <div id="modalRoot"></div>
@@ -152,7 +152,11 @@ const realDB={
   async grpList(){const r=await fetch(`${REST}/groups?select=*&order=name`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
   async grpCreate(g){const r=await fetch(`${REST}/groups`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify(g)});if(!r.ok)throw new Error(await r.text());return (await r.json())[0];},
   async grpUpdate(id,patch){const r=await fetch(`${REST}/groups?id=eq.${id}`,{method:"PATCH",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify(patch)});if(!r.ok)throw new Error(await r.text());},
-  async grpRemove(id){const r=await fetch(`${REST}/groups?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());}
+  async grpRemove(id){const r=await fetch(`${REST}/groups?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());},
+  async tplList(){const r=await fetch(`${REST}/templates?select=*&order=name`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
+  async tplCreate(t){const r=await fetch(`${REST}/templates`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify(t)});if(!r.ok)throw new Error(await r.text());return (await r.json())[0];},
+  async tplUpdate(id,patch){const r=await fetch(`${REST}/templates?id=eq.${id}`,{method:"PATCH",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify({...patch,updated_at:new Date().toISOString()})});if(!r.ok)throw new Error(await r.text());},
+  async tplRemove(id){const r=await fetch(`${REST}/templates?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());}
 };
 const DEMO_PROG={days:[
   {dow:"Mon",focus:"Strength A + Arms",badge:"55–60 min",blocks:[{kind:"strength",tag:"Strength",title:"Strength A — legs + push",sub:"cable + dumbbells",ex:[{name:"Goblet squat to box (DB)",dose:"3 × 8–10",cue:"Heels down",coachNote:"Start light."},{name:"Cable biceps curl",dose:"2 × 12",cue:"Elbows pinned"}]}]},
@@ -172,6 +176,7 @@ function makeMock(){
            {id:"e6",name:"Wall ball",kind:"cardio",dose:"",cue:"Throw to target",category:"crossfit"},
            {id:"e7",name:"Sled Push",kind:"strength",dose:"50 m",cue:"Stay low",category:"hyrox"}];
   let grps=[{id:"g1",name:"Lower body strength",kind:"strength",tag:"Strength",items:[{name:"Goblet squat to box (DB)",dose:"3 × 8–10",cue:"Heels down",coachNote:""},{name:"Sled Push",dose:"4 × 20 m",cue:"Stay low",coachNote:""}]}];
+  let tpls=[];
   let n=1;
   return {async list(){return JSON.parse(JSON.stringify(aths));},
     async create(a){const x={...a,id:"m"+(++n+1)};aths.push(x);return x;},
@@ -186,7 +191,11 @@ function makeMock(){
     async grpList(){return JSON.parse(JSON.stringify(grps));},
     async grpCreate(g){const x={...g,id:"g"+(++n+20)};grps.push(x);return x;},
     async grpUpdate(id,patch){const g=grps.find(x=>x.id===id);if(g)Object.assign(g,patch);},
-    async grpRemove(id){grps=grps.filter(x=>x.id!==id);}};
+    async grpRemove(id){grps=grps.filter(x=>x.id!==id);},
+    async tplList(){return JSON.parse(JSON.stringify(tpls));},
+    async tplCreate(t){if(tpls.some(x=>x.name===t.name))throw new Error("duplicate key");const x={...t,id:"t"+(++n+30)};tpls.push(x);return x;},
+    async tplUpdate(id,patch){const t=tpls.find(x=>x.id===id);if(t)Object.assign(t,patch);},
+    async tplRemove(id){tpls=tpls.filter(x=>x.id!==id);}};
 }
 const DB=DEMO?makeMock():realDB;
 
@@ -197,6 +206,7 @@ let roster=[], editing=null, editTab="calendar", athLogs=[], library=[];
 let calMonth=new Date(), selCalDate=null;
 let libQ="", libKind="", libCat="", pickKind="";
 let groups=[], editingGroup=null, gPickKind="", agSel={groupId:null,dows:[]};
+let templates=[];
 let progMode="weekly", progDate=null;
 function fullDowName(d){return {Mon:"Monday",Tue:"Tuesday",Wed:"Wednesday",Thu:"Thursday",Fri:"Friday",Sat:"Saturday",Sun:"Sunday"}[d]||d;}
 function curDays(){
@@ -229,6 +239,7 @@ function renderRoster(){
   let h=`<div class="card"><div class="card-h"><h2>Athletes</h2>
     <button class="btn light sm" onclick="openLibrary()">📚 Exercise library</button>
     <button class="btn light sm" onclick="openGroups()">🧩 Groups</button>
+    <button class="btn light sm" onclick="openTemplates()">🗂 Weekly templates</button>
     <button class="btn primary sm" onclick="newAthlete()">+ Add athlete</button></div>`;
   if(!roster.length)h+=`<div class="empty"><div class="big">No athletes yet</div>Add your first person to assign them a program.</div>`;
   else roster.forEach(a=>{h+=`<div class="roster-row" onclick="openAthlete('${a.id}')"><div class="avatar">${esc((a.name||"?").slice(0,1).toUpperCase())}</div><div class="nm"><b>${esc(a.name)}</b><div class="slug">?athlete=${esc(a.slug)}</div></div><div class="arrow">›</div></div>`;});
@@ -258,6 +269,7 @@ async function createAthlete(){
 }
 
 async function openAthlete(id){
+  document.getElementById("hCrumb").textContent="← All athletes";
   editing=JSON.parse(JSON.stringify(roster.find(a=>a.id===id)));
   if(!editing.program||!editing.program.days)editing.program={days:[]};
   if(!editing.overrides)editing.overrides={};
@@ -268,6 +280,12 @@ async function openAthlete(id){
   renderEditor();
 }
 function renderEditor(){
+  if(editing&&editing.isTemplate){
+    document.getElementById("app").innerHTML=renderProgramEditor();
+    document.getElementById("savebar").style.display="block";
+    document.getElementById("saveHint").textContent="Saving updates the template only — athletes change when you apply it to them.";
+    return;
+  }
   let h=`<div class="tabs">
     <div class="tab ${editTab==='calendar'?'on':''}" onclick="setTab('calendar')">Calendar</div>
     <div class="tab ${editTab==='program'?'on':''}" onclick="setTab('program')">Program</div>
@@ -359,12 +377,19 @@ function selCal(ds){selCalDate=ds;document.getElementById("calDetail").innerHTML
 /* ---------------- PROGRAM EDITOR ---------------- */
 function renderProgramEditor(){
   let h=`<div class="card"><div class="card-b">`;
-  h+=`<div class="cal-top" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
-    <button class="btn ${progMode==='weekly'?'primary':'light'} sm" onclick="setProgMode('weekly')">Weekly template</button>
-    <span class="muted">— or a one-off for a specific date:</span>
-    <input type="date" class="in" style="width:auto;padding:7px 9px" value="${progDate||todayISO()}" min="${todayISO()}" onchange="setProgDate(this.value)">
-    ${progMode==='date'?`<span class="kindbadge" style="background:#efe9f5;color:#6a4f8f">editing ${esc(progDate||"")}</span>`:""}
-  </div>`;
+  if(!editing.isTemplate){
+    h+=`<div class="cal-top" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <button class="btn ${progMode==='weekly'?'primary':'light'} sm" onclick="setProgMode('weekly')">Weekly template</button>
+      <span class="muted">— or a one-off for a specific date:</span>
+      <input type="date" class="in" id="progDateInput" style="width:auto;padding:7px 9px" value="${progDate||todayISO()}" min="${todayISO()}" onchange="setProgDate(this.value)">
+      <button class="btn ${progMode==='date'?'primary':'light'} sm" onclick="setProgDate(document.getElementById('progDateInput').value)">Edit this day →</button>
+      ${progMode==='date'?`<span class="kindbadge" style="background:#efe9f5;color:#6a4f8f">editing ${esc(progDate||"")}</span>`:""}
+    </div>`;
+    if(progMode==='weekly')h+=`<div class="cal-top" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <button class="btn light sm" onclick="applyTplHere()">🗂 Load template…</button>
+      <button class="btn light sm" onclick="saveAsTemplate()">★ Save week as template</button>
+    </div>`;
+  }
   if(progMode==='date'){h+=renderDateOverrideEditor();h+=`</div></div>`;return h;}
   editing.program.days.forEach((d,di)=>{
     h+=`<div class="day"><div class="day-h">
@@ -466,11 +491,113 @@ function cleanOverrides(){
 }
 async function saveProgram(){
   const btn=document.getElementById("saveProgBtn");btn.disabled=true;btn.textContent="Saving…";
+  if(editing&&editing.isTemplate){
+    try{await DB.tplUpdate(editing.id,{name:editing.name,program:editing.program});
+      const i=templates.findIndex(t=>t.id===editing.id);if(i>=0)templates[i]={...templates[i],name:editing.name,program:JSON.parse(JSON.stringify(editing.program))};
+      toast("Template saved ✓");}
+    catch(e){toast("Save failed: "+e.message.slice(0,60),true);}
+    btn.disabled=false;btn.textContent="Save program";return;
+  }
   cleanOverrides();
   try{await DB.update(editing.id,{program:editing.program,overrides:editing.overrides||{},name:editing.name,slug:editing.slug});toast("Saved ✓");const i=roster.findIndex(a=>a.id===editing.id);if(i>=0)roster[i]={...roster[i],program:editing.program,overrides:editing.overrides};}
   catch(e){toast("Save failed: "+e.message.slice(0,60),true);}
   btn.disabled=false;btn.textContent="Save program";
 }
+
+/* ---------------- WEEKLY TEMPLATES ---------------- */
+async function openTemplates(){
+  editing=null;
+  document.getElementById("hCrumb").style.display="block";
+  document.getElementById("hCrumb").textContent="← All athletes";
+  document.getElementById("hTitle").textContent="Weekly templates";
+  document.getElementById("savebar").style.display="none";
+  try{templates=await DB.tplList();}catch(e){templates=[];toast("Couldn't load templates: "+e.message.slice(0,60),true);}
+  renderTemplatesScreen();
+}
+function renderTemplatesScreen(){
+  let h=`<div class="card"><div class="card-h"><h2>Weekly templates</h2><span class="muted">${templates.length} total</span><button class="btn primary sm" onclick="newTemplateForm()">+ New template</button></div>`;
+  if(!templates.length)h+=`<div class="empty"><div class="big">No templates yet</div>Build a reusable weekly plan once, then apply it to any athlete.</div>`;
+  else templates.forEach(t=>{
+    const days=(t.program&&t.program.days)?t.program.days.length:0;
+    h+=`<div class="roster-row" onclick="editTemplate('${t.id}')"><div class="avatar">🗂</div><div class="nm"><b>${esc(t.name)}</b><div class="slug">${days} day${days===1?"":"s"}</div></div>
+      <button class="btn light sm" onclick="event.stopPropagation();applyTplForm('${t.id}')">Apply to athlete…</button>
+      <button class="btn danger sm" onclick="event.stopPropagation();tplDelete('${t.id}')">✕</button>
+      <div class="arrow">›</div></div>`;
+  });
+  h+=`</div><p class="muted" style="margin-left:4px">Tap a template to edit it. Applying copies it into an athlete's weekly program — their logs and one-off date plans are untouched.</p>`;
+  document.getElementById("app").innerHTML=h;
+}
+function newTemplateForm(){
+  const opts=roster.map(a=>`<option value="a:${a.id}">${esc(a.name)} — athlete's current week</option>`).join("")
+    +templates.map(t=>`<option value="t:${t.id}">${esc(t.name)} — copy of template</option>`).join("");
+  document.getElementById("modalRoot").innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-h"><h3>New template</h3><button class="btn ghost sm" onclick="closeModal()">Close</button></div><div class="modal-b">
+    <label class="fld"><span>Name</span><input class="in" id="tName" placeholder="e.g. Kona Build Week"></label>
+    <label class="fld"><span>Start from…</span><select class="in" id="tFrom"><option value="">Blank (build from scratch)</option>${opts}</select></label>
+    <div class="row2" style="margin-top:12px"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="createTemplate()">Create</button></div>
+  </div></div></div>`;
+}
+async function createTemplate(){
+  const name=document.getElementById("tName").value.trim();
+  if(!name){toast("Name required",true);return;}
+  const from=document.getElementById("tFrom").value;
+  let program={days:[]};
+  if(from.startsWith("a:")){const a=roster.find(x=>x.id===from.slice(2));if(a)program=JSON.parse(JSON.stringify(a.program||{days:[]}));}
+  else if(from.startsWith("t:")){const t=templates.find(x=>x.id===from.slice(2));if(t)program=JSON.parse(JSON.stringify(t.program||{days:[]}));}
+  try{const t=await DB.tplCreate({name,program});templates=await DB.tplList();closeModal();editTemplate(t.id);}
+  catch(e){toast(/duplicate|unique/i.test(e.message)?"A template with that name already exists":"Create failed: "+e.message.slice(0,60),true);}
+}
+function editTemplate(id){
+  const t=templates.find(x=>x.id===id);if(!t)return;
+  editing={isTemplate:true,id:t.id,name:t.name,program:JSON.parse(JSON.stringify(t.program||{days:[]})),overrides:{}};
+  if(!editing.program.days)editing.program.days=[];
+  progMode="weekly";progDate=null;editTab="program";
+  document.getElementById("hCrumb").style.display="block";
+  document.getElementById("hCrumb").textContent="← Templates";
+  document.getElementById("hTitle").textContent="🗂 "+t.name;
+  renderEditor();
+}
+async function tplDelete(id){
+  if(!confirm("Delete this template? Athletes it was applied to keep their programs."))return;
+  try{await DB.tplRemove(id);templates=templates.filter(t=>t.id!==id);renderTemplatesScreen();toast("Deleted");}catch(e){toast("Delete failed",true);}
+}
+function applyTplForm(id){
+  const t=templates.find(x=>x.id===id);if(!t)return;
+  if(!roster.length){toast("No athletes yet",true);return;}
+  const opts=roster.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join("");
+  document.getElementById("modalRoot").innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-h"><h3>Apply "${esc(t.name)}"</h3><button class="btn ghost sm" onclick="closeModal()">Close</button></div><div class="modal-b">
+    <label class="fld"><span>Athlete</span><select class="in" id="apAth">${opts}</select></label>
+    <p class="muted">This replaces their current weekly program immediately. Their logs and one-off date plans are untouched.</p>
+    <div class="row2" style="margin-top:12px"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="applyTplToAthlete('${t.id}')">Apply</button></div>
+  </div></div></div>`;
+}
+async function applyTplToAthlete(tplId){
+  const t=templates.find(x=>x.id===tplId);const aid=document.getElementById("apAth").value;const a=roster.find(x=>x.id===aid);
+  if(!t||!a)return;
+  try{await DB.update(a.id,{program:JSON.parse(JSON.stringify(t.program||{days:[]}))});roster=await DB.list();closeModal();toast(`Applied to ${a.name} ✓`);}
+  catch(e){toast("Apply failed: "+e.message.slice(0,60),true);}
+}
+async function applyTplHere(){
+  if(!templates.length){try{templates=await DB.tplList();}catch(e){templates=[];}}
+  if(!templates.length){toast("No templates saved yet — build one from the roster screen",true);return;}
+  const opts=templates.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join("");
+  document.getElementById("modalRoot").innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-h"><h3>Load template</h3><button class="btn ghost sm" onclick="closeModal()">Close</button></div><div class="modal-b">
+    <label class="fld"><span>Template</span><select class="in" id="apTpl">${opts}</select></label>
+    <p class="muted">Replaces the weekly plan shown below. Nothing is stored until you hit <b>Save program</b>.</p>
+    <div class="row2" style="margin-top:12px"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="applyTplHereGo()">Load</button></div>
+  </div></div></div>`;
+}
+function applyTplHereGo(){
+  const t=templates.find(x=>x.id===document.getElementById("apTpl").value);if(!t)return;
+  editing.program=JSON.parse(JSON.stringify(t.program||{days:[]}));
+  closeModal();renderEditor();toast("Template loaded — Save program to commit");
+}
+async function saveAsTemplate(){
+  const name=prompt("Template name:",(editing.name||"")+" — weekly");
+  if(!name||!name.trim())return;
+  try{await DB.tplCreate({name:name.trim(),program:JSON.parse(JSON.stringify(editing.program||{days:[]}))});templates=await DB.tplList();toast("Template saved ✓");}
+  catch(e){toast(/duplicate|unique/i.test(e.message)?"A template with that name already exists":"Save failed: "+e.message.slice(0,60),true);}
+}
+function doneEditing(){if(editing&&editing.isTemplate)openTemplates();else goRoster();}
 
 /* ---------------- EXERCISE PICKER MODAL ---------------- */
 async function openExPicker(di,bi){
@@ -505,6 +632,7 @@ function closeModal(){document.getElementById("modalRoot").innerHTML="";}
 
 /* ---------------- LIBRARY MANAGER ---------------- */
 async function openLibrary(){
+  document.getElementById("hCrumb").textContent="← All athletes";
   editing=null;document.getElementById("hCrumb").style.display="block";document.getElementById("hTitle").textContent="Exercise library";
   document.getElementById("savebar").style.display="none";libQ="";libKind="";libCat="";
   try{library=await DB.libList();}catch(e){library=[];}
@@ -550,6 +678,7 @@ async function libDelete(id){if(!confirm("Remove from library?"))return;try{awai
 
 /* ---------------- GROUPS (saved reusable blocks) ---------------- */
 async function openGroups(){
+  document.getElementById("hCrumb").textContent="← All athletes";
   editing=null;editingGroup=null;
   document.getElementById("hCrumb").style.display="block";document.getElementById("hTitle").textContent="Exercise groups";
   document.getElementById("savebar").style.display="none";
