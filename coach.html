@@ -835,7 +835,7 @@ async function loadLogs(){
   let h=`<div class="card-b">`;
   Object.keys(byDate).sort().reverse().forEach(date=>{const rows=byDate[date];
     h+=`<div class="logday"><h4>${esc(date)} <span class="muted" style="font-weight:400">${esc(rows[0].day_focus||"")}</span></h4>`;
-    rows.forEach(l=>{const cardio=l.duration_min!=null||l.rpe!=null;h+=`<div class="logrow"><span class="lx">${esc(l.exercise_name)} <span class="v">· set ${l.set_number}</span></span><span class="v">${cardio?(esc(l.duration_min||"–")+" min"+(l.rpe!=null?", RPE "+esc(l.rpe):"")):(esc(l.reps||"–")+" reps"+(l.weight!=null?" @ "+esc(l.weight)+" lb":""))}</span>${l.note?`<span class="v">📝 ${esc(l.note)}</span>`:""}<button class="btn danger sm" onclick="delLog('${l.id}')">🗑</button></div>`;});
+    rows.forEach(l=>{const cardio=l.duration_min!=null||l.rpe!=null||l.distance!=null;h+=`<div class="logrow"><span class="lx">${esc(l.exercise_name)} <span class="v">· set ${l.set_number}</span></span><span class="v">${cardio?([l.duration_min!=null?esc(l.duration_min)+" min":null,l.distance!=null?esc(l.distance)+" "+esc(l.distance_unit||"mi"):null,l.rpe!=null?"RPE "+esc(l.rpe):null].filter(Boolean).join(", ")||"–"):(esc(l.reps||"–")+" reps"+(l.weight!=null?" @ "+esc(l.weight)+" lb":""))}</span>${l.note?`<span class="v">📝 ${esc(l.note)}</span>`:""}<button class="btn danger sm" onclick="delLog('${l.id}')">🗑</button></div>`;});
     h+=`</div>`;});
   h+=`</div>`;area.innerHTML=h;
 }

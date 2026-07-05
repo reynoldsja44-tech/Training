@@ -174,6 +174,7 @@ function makeDemoDB(){let athlete={id:"demo-1",slug:SLUG||"demo",name:"Demo Athl
 const DB=DEMO?makeDemoDB():realDB;
 
 let athlete=null,program=null,logs=[],selDate=null,mode="day",backfill=false,sessionData={},extras=[];
+let calMonth=new Date();
 const dowOrder=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const fullDow=d=>({Mon:"Monday",Tue:"Tuesday",Wed:"Wednesday",Thu:"Thursday",Fri:"Friday",Sat:"Saturday",Sun:"Sunday"}[d]||d);
 const checkSVG='<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
@@ -206,8 +207,8 @@ function lastSessionFor(name,beforeDate){
 function fmtLast(name){
   const s=lastSessionFor(name,selDate);if(!s)return"";
   const r0=s.rows[0];
-  if(r0.duration_min!=null||r0.rpe!=null){
-    let bits=[];if(r0.duration_min!=null)bits.push(r0.duration_min+" min");if(r0.rpe!=null)bits.push("RPE "+r0.rpe);
+  if(r0.duration_min!=null||r0.rpe!=null||r0.distance!=null){
+    let bits=[];if(r0.duration_min!=null)bits.push(r0.duration_min+" min");if(r0.distance!=null)bits.push(r0.distance+" "+(r0.distance_unit||"mi"));if(r0.rpe!=null)bits.push("RPE "+r0.rpe);
     return `Last (${s.date}): ${bits.join(", ")}`;
   }
   const reps=s.rows.map(x=>x.reps!=null?x.reps:"–").join(", ");
@@ -236,6 +237,7 @@ function renderDateNav(){
     <span class="datefield" style="margin:0;flex:1"><input type="date" id="seldate" value="${selDate}" onchange="onDateChange(this.value)" style="width:100%"></span>
     <button class="chip navchip" onclick="shiftDate(1)">›</button>
     <button class="chip ${selDate===todayISO()&&mode==='day'&&!backfill?'on':''}" onclick="goToday()">Today</button>
+    <button class="chip ${mode==='calendar'?'on':''}" onclick="openCal()">📅 Month</button>
     <button class="chip ${mode==='history'?'on':''}" onclick="setMode('history')">History</button>
     <button class="chip" onclick="markRest()">😴 Rest</button>
   </div>`;
@@ -248,6 +250,7 @@ function startBackfill(){backfill=true;sessionData={};extras=[];render();}
 /* ---------------- main render ---------------- */
 function render(){
   if(mode==="history")return renderHistory();
+  if(mode==="calendar")return renderAthCal();
   const app=document.getElementById("app");
   let html=renderDateNav();
   const day=dayForDate(selDate);
@@ -285,9 +288,10 @@ function render(){
 
 /* ---------------- logged (past) day ---------------- */
 function loggedRow(l){
-  const cardio=l.duration_min!=null||l.rpe!=null;
+  const cardio=l.duration_min!=null||l.rpe!=null||l.distance!=null;
   let h=`<div class="hist-row" data-id="${l.id}"><span class="hx">${esc(l.exercise_name)}${(!cardio)?` <span style="color:#6b7884;font-weight:400">· set ${l.set_number}</span>`:""}</span>`;
-  if(cardio)h+=`<label style="font-size:12px;color:#6b7884">min <input data-h="duration_min" value="${esc(l.duration_min!=null?l.duration_min:"")}"></label><label style="font-size:12px;color:#6b7884">RPE <input data-h="rpe" value="${esc(l.rpe!=null?l.rpe:"")}"></label>`;
+  if(cardio){const uopts=DIST_UNITS.map(u=>`<option value="${u}" ${(l.distance_unit||"mi")===u?"selected":""}>${u}</option>`).join("");
+    h+=`<label style="font-size:12px;color:#6b7884">min <input data-h="duration_min" value="${esc(l.duration_min!=null?l.duration_min:"")}"></label><label style="font-size:12px;color:#6b7884">RPE <input data-h="rpe" value="${esc(l.rpe!=null?l.rpe:"")}"></label><label style="font-size:12px;color:#6b7884">dist <input data-h="distance" value="${esc(l.distance!=null?l.distance:"")}" style="width:52px"></label><select data-h="distance_unit" style="font-size:12px">${uopts}</select>`;}
   else h+=`<label style="font-size:12px;color:#6b7884">reps <input data-h="reps" value="${esc(l.reps||"")}"></label><label style="font-size:12px;color:#6b7884">lb <input data-h="weight" value="${esc(l.weight!=null?l.weight:"")}"></label>`;
   h+=`<button class="del" data-del="${l.id}">🗑</button>${l.note?`<div class="hnote">📝 ${esc(l.note)}</div>`:""}</div>`;
   return h;
@@ -339,12 +343,18 @@ function renderExercise(block,bi,e,ei,dateLogs){
   h+=`<textarea class="exnote" data-note="${key}" placeholder="Note (how it felt, any tweak)…">${esc(sd.note)}</textarea>`;
   h+=`</div></div></div>`;return h;
 }
+const DIST_UNITS=["mi","km","m","yd"];
+function guessUnit(name){return /swim/i.test(name||"")?"m":"mi";}
 function renderCardioFields(key,sd,e){
+  if(sd.dunit==null)sd.dunit=guessUnit((e&&e.name)||sd.activity);
   let opts='<option value="">Effort 1–10</option>';for(let i=1;i<=10;i++)opts+=`<option value="${i}" ${String(sd.rpe)===String(i)?"selected":""}>${i}</option>`;
+  const uopts=DIST_UNITS.map(u=>`<option value="${u}" ${sd.dunit===u?"selected":""}>${u}</option>`).join("");
   return `<div class="cardio-fields" data-cardio="${key}">
     <label>Activity<input data-cf="activity" data-k="${key}" value="${esc(sd.activity||"")}" placeholder="e.g. Rower, Peloton walk"></label>
     <div class="row2"><label>Minutes<input data-cf="duration" data-k="${key}" inputmode="numeric" value="${esc(sd.duration||"")}" placeholder="${esc((e&&e.dose)||"min")}"></label>
-    <label>Effort<select data-cf="rpe" data-k="${key}">${opts}</select></label></div></div>`;
+    <label>Effort<select data-cf="rpe" data-k="${key}">${opts}</select></label></div>
+    <div class="row2"><label>Distance<input data-cf="distance" data-k="${key}" inputmode="decimal" value="${esc(sd.distance||"")}" placeholder="optional"></label>
+    <label>Unit<select data-cf="dunit" data-k="${key}">${uopts}</select></label></div></div>`;
 }
 function setRow(key,si,s){
   return `<tr data-row="${si}"><td>${si+1}</td>
@@ -379,7 +389,10 @@ function renderExtraCard(x,xi){
   h+=`<div class="kindtoggle"><button data-exkind="strength" data-xi="${xi}" class="${x.kind==='strength'?'on':''}">Strength</button><button data-exkind="cardio" data-xi="${xi}" class="${x.kind==='cardio'?'on':''}">Cardio</button></div>`;
   if(x.kind==='cardio'){
     let opts='<option value="">Effort 1–10</option>';for(let i=1;i<=10;i++)opts+=`<option value="${i}" ${String(x.rpe)===String(i)?'selected':''}>${i}</option>`;
-    h+=`<div class="cardio-fields"><div class="row2"><label>Minutes<input data-ex="duration" data-xi="${xi}" inputmode="numeric" value="${esc(x.duration||"")}" placeholder="min"></label><label>Effort<select data-ex="rpe" data-xi="${xi}">${opts}</select></label></div></div>`;
+    if(x.dunit==null)x.dunit=guessUnit(x.name);
+    const uopts=DIST_UNITS.map(u=>`<option value="${u}" ${x.dunit===u?"selected":""}>${u}</option>`).join("");
+    h+=`<div class="cardio-fields"><div class="row2"><label>Minutes<input data-ex="duration" data-xi="${xi}" inputmode="numeric" value="${esc(x.duration||"")}" placeholder="min"></label><label>Effort<select data-ex="rpe" data-xi="${xi}">${opts}</select></label></div>
+    <div class="row2"><label>Distance<input data-ex="distance" data-xi="${xi}" inputmode="decimal" value="${esc(x.distance||"")}" placeholder="optional"></label><label>Unit<select data-ex="dunit" data-xi="${xi}">${uopts}</select></label></div></div>`;
   }else{
     h+=`<div class="sets"><table><thead><tr><th></th><th>Reps</th><th>Weight (lb)</th><th></th></tr></thead><tbody data-exsets="${xi}">`;
     (x.sets||[]).forEach((s,si)=>{h+=extraSetRow(xi,si,s);});
@@ -400,7 +413,7 @@ function bindExtras(){
 }
 
 function hasData(sd){return !!(sd.done||(sd.note&&sd.note.trim()!=="")||sd.touched);}
-function extraHasData(x){return !!((x.name&&x.name.trim())||x.note||x.duration||x.rpe||(x.sets&&x.sets.some(s=>s.reps||s.weight)));}
+function extraHasData(x){return !!((x.name&&x.name.trim())||x.note||x.duration||x.rpe||x.distance||(x.sets&&x.sets.some(s=>s.reps||s.weight)));}
 function updateSaveCount(){
   let n=0;Object.values(sessionData).forEach(sd=>{if(hasData(sd))n++;});extras.forEach(x=>{if(extraHasData(x))n++;});
   const el=document.getElementById("savecount");if(el)el.textContent=n?`${n} item${n>1?"s":""} ready`:"Nothing logged yet";
@@ -416,7 +429,7 @@ async function saveWorkout(){
       const sd=sessionData[exKey(bi,ei)];if(!sd||!hasData(sd))return;
       const style=exStyle(b,e);
       const base={athlete_id:athlete.id,athlete_slug:athlete.slug,log_date:date,day_dow:day.dow,day_focus:day.focus||null,block_title:b.title||null,completed:true};
-      if(style==="cardio")rows.push({...base,exercise_name:(sd.activity||e.name),set_number:1,reps:null,weight:null,duration_min:sd.duration?parseFloat(sd.duration):null,rpe:sd.rpe?parseFloat(sd.rpe):null,note:sd.note||null});
+      if(style==="cardio")rows.push({...base,exercise_name:(sd.activity||e.name),set_number:1,reps:null,weight:null,duration_min:sd.duration?parseFloat(sd.duration):null,rpe:sd.rpe?parseFloat(sd.rpe):null,distance:sd.distance?parseFloat(sd.distance):null,distance_unit:sd.distance?(sd.dunit||"mi"):null,note:sd.note||null});
       else if(style==="sets"){
         const real=sd.sets.filter(s=>(s.reps!==""&&s.reps!=null)||(s.weight!==""&&s.weight!=null));
         if(real.length)real.forEach((s,si)=>rows.push({...base,exercise_name:e.name,set_number:si+1,reps:s.reps===""?null:String(s.reps),weight:(s.weight===""||s.weight==null)?null:parseFloat(s.weight),note:si===0?(sd.note||null):null}));
@@ -427,7 +440,7 @@ async function saveWorkout(){
   extras.forEach(x=>{
     if(!extraHasData(x))return;
     const base={athlete_id:athlete.id,athlete_slug:athlete.slug,log_date:date,day_dow:(day&&day.dow)||dowOf(selDate),day_focus:(day&&day.focus)||null,block_title:"Added by athlete",completed:true};
-    if(x.kind==="cardio")rows.push({...base,exercise_name:x.name||"Extra cardio",set_number:1,reps:null,weight:null,duration_min:x.duration?parseFloat(x.duration):null,rpe:x.rpe?parseFloat(x.rpe):null,note:x.note||null});
+    if(x.kind==="cardio")rows.push({...base,exercise_name:x.name||"Extra cardio",set_number:1,reps:null,weight:null,duration_min:x.duration?parseFloat(x.duration):null,rpe:x.rpe?parseFloat(x.rpe):null,distance:x.distance?parseFloat(x.distance):null,distance_unit:x.distance?(x.dunit||"mi"):null,note:x.note||null});
     else{const real=(x.sets||[]).filter(s=>s.reps||s.weight);
       if(real.length)real.forEach((s,si)=>rows.push({...base,exercise_name:x.name||"Extra",set_number:si+1,reps:s.reps===""?null:String(s.reps),weight:(s.weight===""||s.weight==null)?null:parseFloat(s.weight),note:si===0?(x.note||null):null}));
       else rows.push({...base,exercise_name:x.name||"Extra",set_number:1,reps:null,weight:null,note:x.note||null});}
@@ -453,6 +466,47 @@ async function markRest(){
 
 function setMode(m){mode=m;sessionData={};extras=[];render();}
 
+/* ---------------- month calendar ---------------- */
+function openCal(){calMonth=new Date(selDate+"T00:00:00");setMode("calendar");}
+function calNav(d){calMonth=new Date(calMonth.getFullYear(),calMonth.getMonth()+d,1);render();}
+function calToday(){calMonth=new Date();render();}
+function renderAthCal(){
+  const app=document.getElementById("app");
+  const y=calMonth.getFullYear(),mo=calMonth.getMonth();
+  const monthName=calMonth.toLocaleString(undefined,{month:"long",year:"numeric"});
+  const first=new Date(y,mo,1);const startCol=(first.getDay()+6)%7;const dim=new Date(y,mo+1,0).getDate();
+  const tISO=todayISO();
+  let html=renderDateNav();
+  html+=`<div class="acal"><div class="acal-top">
+    <button class="chip navchip" onclick="calNav(-1)">‹</button>
+    <div class="acal-month">${esc(monthName)}</div>
+    <button class="chip navchip" onclick="calNav(1)">›</button>
+    <button class="chip" onclick="calToday()">This month</button>
+  </div>
+  <div class="acal-grid">`;
+  ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].forEach(d=>html+=`<div class="acal-h">${d}</div>`);
+  for(let i=0;i<startCol;i++)html+=`<div class="acal-cell empty"></div>`;
+  for(let dn=1;dn<=dim;dn++){
+    const ds=`${y}-${String(mo+1).padStart(2,"0")}-${String(dn).padStart(2,"0")}`;
+    const day=dayForDate(ds);
+    const logged=logsForDate(ds).length>0;
+    const hasEx=day&&(day.blocks||[]).some(b=>(b.ex||[]).length>0);
+    const rest=day&&day.rest&&!hasEx;
+    const custom=day&&day._override;
+    let mark="";
+    if(logged)mark=`<span class="acal-mark ok">✓</span>`;
+    else if(rest)mark=`<span class="acal-mark">😴</span>`;
+    else if(hasEx)mark=`<span class="acal-mark ${custom?"cus":"pln"}">${custom?"★":"●"}</span>`;
+    const cls=["acal-cell",ds===tISO?"today":"",ds===selDate?"sel":"",ds<tISO?"past":""].join(" ");
+    html+=`<div class="${cls}" onclick="onDateChange('${ds}')"><span class="acal-num">${dn}</span>${mark}</div>`;
+  }
+  html+=`</div>
+  <div class="acal-legend"><span><span class="acal-mark ok">✓</span> logged</span><span><span class="acal-mark pln">●</span> planned</span><span><span class="acal-mark cus">★</span> custom</span><span>😴 rest</span></div>
+  <div class="acal-hint">Tap a day to see its plan or what you logged.</div></div>`;
+  app.innerHTML=html;
+  document.getElementById("savebar").style.display="none";
+}
+
 /* ---------------- full history list ---------------- */
 function renderHistory(){
   const app=document.getElementById("app");
@@ -470,8 +524,8 @@ function renderHistory(){
 
 /* shared inline edit/delete for logged rows (history + past day) */
 function bindLogEdits(){
-  document.querySelectorAll(".hist-row input[data-h]").forEach(inp=>inp.onchange=async()=>{
-    const id=inp.closest(".hist-row").dataset.id,f=inp.dataset.h;let v=inp.value;const patch={};const numeric=(f!=="reps");patch[f]=numeric?(v===""?null:parseFloat(v)):(v===""?null:v);
+  document.querySelectorAll(".hist-row input[data-h], .hist-row select[data-h]").forEach(inp=>inp.onchange=async()=>{
+    const id=inp.closest(".hist-row").dataset.id,f=inp.dataset.h;let v=inp.value;const patch={};const numeric=(f!=="reps"&&f!=="distance_unit");patch[f]=numeric?(v===""?null:parseFloat(v)):(v===""?null:v);
     try{await DB.updateLog(id,patch);toast("Updated ✓");const l=logs.find(x=>x.id===id);if(l)l[f]=patch[f];}catch(e){toast("Update failed",true);}
   });
   document.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this entry?"))return;try{await DB.deleteLog(b.dataset.del);logs=logs.filter(x=>x.id!==b.dataset.del);toast("Deleted");render();}catch(e){toast("Delete failed",true);}});
@@ -481,6 +535,24 @@ document.getElementById("saveBtn").onclick=saveWorkout;
 init();
 </script>
 <style>
+.acal{background:var(--card,#fff);border-radius:16px;padding:14px;margin-top:12px;box-shadow:0 1px 4px rgba(20,30,40,.06);}
+.acal-top{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.acal-month{flex:1;text-align:center;font-weight:800;font-size:19px;}
+.acal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;}
+.acal-h{text-align:center;font-size:12.5px;font-weight:800;color:#6b7884;padding:4px 0;}
+.acal-cell{min-height:52px;border:1.5px solid #e7dfd0;border-radius:10px;padding:4px 5px;cursor:pointer;position:relative;background:#fff;display:flex;flex-direction:column;align-items:center;}
+.acal-cell.empty{border:none;background:transparent;cursor:default;}
+.acal-cell.past{background:#faf6ee;}
+.acal-cell.today{border-color:#2f8f86;border-width:2.5px;}
+.acal-cell.sel{background:#e3f2f0;}
+.acal-num{font-size:15px;font-weight:700;}
+.acal-mark{font-size:15px;line-height:1.2;font-weight:800;}
+.acal-mark.ok{color:#1f6f63;}
+.acal-mark.pln{color:#2f8f86;}
+.acal-mark.cus{color:#6a4f8f;}
+.acal-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:13.5px;color:#6b7884;align-items:center;}
+.acal-legend>span{display:flex;align-items:center;gap:4px;}
+.acal-hint{margin-top:6px;font-size:13.5px;color:#6b7884;}
 .logged-badge{display:inline-block;font-size:12.5px;font-weight:700;color:#1f6f63;background:#e3f2ee;border-radius:8px;padding:3px 10px;margin-top:7px;}
 .navchip{min-width:38px;justify-content:center;font-size:18px;padding:8px 10px;}
 .lastval{color:#7a6a4f;background:#f3efe5;border-radius:7px;padding:3px 8px;display:inline-block;}
