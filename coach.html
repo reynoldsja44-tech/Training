@@ -208,6 +208,7 @@ let libQ="", libKind="", libCat="", pickKind="";
 let groups=[], editingGroup=null, gPickKind="", agSel={groupId:null,dows:[]};
 let templates=[];
 let progMode="weekly", progDate=null;
+function isDirty(){return !!(editing&&editing.__snap&&editing.__snap!==JSON.stringify({p:editing.program,o:editing.overrides}));}
 function fullDowName(d){return {Mon:"Monday",Tue:"Tuesday",Wed:"Wednesday",Thu:"Thursday",Fri:"Friday",Sat:"Saturday",Sun:"Sunday"}[d]||d;}
 function curDays(){
   if(progMode==="date"){const date=progDate||todayISO();if(!editing.overrides)editing.overrides={};if(!editing.overrides[date])editing.overrides[date]={focus:"",badge:"",blocks:[]};return [editing.overrides[date]];}
@@ -274,6 +275,7 @@ async function openAthlete(id){
   if(!editing.program||!editing.program.days)editing.program={days:[]};
   if(!editing.overrides)editing.overrides={};
   editTab="calendar";selCalDate=null;calMonth=new Date();progMode="weekly";progDate=null;
+  editing.__snap=JSON.stringify({p:editing.program,o:editing.overrides});
   document.getElementById("hCrumb").style.display="block";
   document.getElementById("hTitle").textContent=editing.name;
   try{athLogs=await DB.logs(editing.slug);}catch(e){athLogs=[];}
@@ -283,7 +285,7 @@ function renderEditor(){
   if(editing&&editing.isTemplate){
     document.getElementById("app").innerHTML=renderProgramEditor();
     document.getElementById("savebar").style.display="block";
-    document.getElementById("saveHint").textContent="Saving updates the template only — athletes change when you apply it to them.";
+    document.getElementById("saveHint").innerHTML=isDirty()?'<b style="color:#b3423a">⚠ Unsaved changes</b> — hit Save program to commit.':"Saving updates the template only — athletes change when you apply it to them.";
     return;
   }
   let h=`<div class="tabs">
@@ -296,8 +298,9 @@ function renderEditor(){
   else if(editTab==="logs")h+=`<div id="logsArea" class="card"><div class="card-b"><div class="muted">Loading…</div></div></div>`;
   else h+=renderSettings();
   document.getElementById("app").innerHTML=h;
-  document.getElementById("savebar").style.display=editTab==="program"?"block":"none";
-  if(editTab==="program")document.getElementById("saveHint").textContent="Changes apply next time they open their page.";
+  const dirty=isDirty();
+  document.getElementById("savebar").style.display=(editTab==="program"||dirty)?"block":"none";
+  document.getElementById("saveHint").innerHTML=dirty?'<b style="color:#b3423a">⚠ Unsaved changes</b> — hit Save program to commit, or Done to discard.':"Changes apply next time they open their page.";
   if(editTab==="logs")loadLogs();
 }
 function setTab(t){editTab=t;renderEditor();}
@@ -308,11 +311,12 @@ function programForDow(dow){return (editing.program.days||[]).find(d=>d.dow===do
 function overrideFor(ds){const o=editing.overrides&&editing.overrides[ds];if(o&&(o.rest||(o.blocks&&o.blocks.length)||(o.focus&&o.focus.trim())))return o;return null;}
 function editDateOverride(ds){editTab="program";progMode="date";progDate=ds;renderEditor();}
 function renderCalendar(){
+  const dirtyBanner=isDirty()?`<div class="card" style="border:1.5px solid #d9a03c;background:#fdf6e7"><div class="card-b" style="padding:10px 14px"><b>⚠ Previewing unsaved edits.</b> This calendar reflects changes you haven't saved yet — hit <b>Save program</b> to commit them, or they'll be discarded when you leave.</div></div>`:"";
   const y=calMonth.getFullYear(),mo=calMonth.getMonth();
   const monthName=calMonth.toLocaleString(undefined,{month:"long",year:"numeric"});
   const first=new Date(y,mo,1);const startCol=(first.getDay()+6)%7;const dim=new Date(y,mo+1,0).getDate();
   const lbd=logsByDate();const tISO=todayISO();
-  let h=`<div class="card"><div class="card-b">
+  let h=dirtyBanner+`<div class="card"><div class="card-b">
     <div class="cal-top">
       <button class="btn ghost sm" onclick="calNav(-1)">◀</button>
       <div class="mlabel">${esc(monthName)}</div>
@@ -494,12 +498,13 @@ async function saveProgram(){
   if(editing&&editing.isTemplate){
     try{await DB.tplUpdate(editing.id,{name:editing.name,program:editing.program});
       const i=templates.findIndex(t=>t.id===editing.id);if(i>=0)templates[i]={...templates[i],name:editing.name,program:JSON.parse(JSON.stringify(editing.program))};
+      editing.__snap=JSON.stringify({p:editing.program,o:editing.overrides});renderEditor();
       toast("Template saved ✓");}
     catch(e){toast("Save failed: "+e.message.slice(0,60),true);}
     btn.disabled=false;btn.textContent="Save program";return;
   }
   cleanOverrides();
-  try{await DB.update(editing.id,{program:editing.program,overrides:editing.overrides||{},name:editing.name,slug:editing.slug});toast("Saved ✓");const i=roster.findIndex(a=>a.id===editing.id);if(i>=0)roster[i]={...roster[i],program:editing.program,overrides:editing.overrides};}
+  try{await DB.update(editing.id,{program:editing.program,overrides:editing.overrides||{},name:editing.name,slug:editing.slug});toast("Saved ✓");const i=roster.findIndex(a=>a.id===editing.id);if(i>=0)roster[i]={...roster[i],program:editing.program,overrides:editing.overrides};editing.__snap=JSON.stringify({p:editing.program,o:editing.overrides});renderEditor();}
   catch(e){toast("Save failed: "+e.message.slice(0,60),true);}
   btn.disabled=false;btn.textContent="Save program";
 }
@@ -550,6 +555,7 @@ function editTemplate(id){
   const t=templates.find(x=>x.id===id);if(!t)return;
   editing={isTemplate:true,id:t.id,name:t.name,program:JSON.parse(JSON.stringify(t.program||{days:[]})),overrides:{}};
   if(!editing.program.days)editing.program.days=[];
+  editing.__snap=JSON.stringify({p:editing.program,o:editing.overrides});
   progMode="weekly";progDate=null;editTab="program";
   document.getElementById("hCrumb").style.display="block";
   document.getElementById("hCrumb").textContent="← Templates";
@@ -625,7 +631,10 @@ async function saveAsTemplate(){
   try{await DB.tplCreate({name:name.trim(),program:JSON.parse(JSON.stringify(editing.program||{days:[]}))});templates=await DB.tplList();toast("Template saved ✓");}
   catch(e){toast(/duplicate|unique/i.test(e.message)?"A template with that name already exists":"Save failed: "+e.message.slice(0,60),true);}
 }
-function doneEditing(){if(editing&&editing.isTemplate)openTemplates();else goRoster();}
+function doneEditing(){
+  if(isDirty()&&!confirm("You have unsaved changes. Discard them?"))return;
+  if(editing&&editing.isTemplate)openTemplates();else goRoster();
+}
 
 /* ---------------- EXERCISE PICKER MODAL ---------------- */
 async function openExPicker(di,bi){
