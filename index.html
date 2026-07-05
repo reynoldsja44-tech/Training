@@ -489,7 +489,8 @@ function renderAthCal(){
   for(let dn=1;dn<=dim;dn++){
     const ds=`${y}-${String(mo+1).padStart(2,"0")}-${String(dn).padStart(2,"0")}`;
     const day=dayForDate(ds);
-    const logged=logsForDate(ds).length>0;
+    const dayLogs=logsForDate(ds);
+    const logged=dayLogs.length>0;
     const hasEx=day&&(day.blocks||[]).some(b=>(b.ex||[]).length>0);
     const rest=day&&day.rest&&!hasEx;
     const custom=day&&day._override;
@@ -497,8 +498,9 @@ function renderAthCal(){
     if(logged)mark=`<span class="acal-mark ok">✓</span>`;
     else if(rest)mark=`<span class="acal-mark">😴</span>`;
     else if(hasEx)mark=`<span class="acal-mark ${custom?"cus":"pln"}">${custom?"★":"●"}</span>`;
+    const focus=logged?(dayLogs[0].day_focus||dayLogs.map(l=>l.exercise_name).filter(Boolean)[0]||""):(day?(day.focus||(rest?"Rest":"")):"");
     const cls=["acal-cell",ds===tISO?"today":"",ds===selDate?"sel":"",ds<tISO?"past":""].join(" ");
-    html+=`<div class="${cls}" onclick="onDateChange('${ds}')"><span class="acal-num">${dn}</span>${mark}</div>`;
+    html+=`<div class="${cls}" onclick="onDateChange('${ds}')" title="${esc(focus)}"><div class="acal-cell-top"><span class="acal-num">${dn}</span>${mark}</div>${focus?`<div class="acal-focus">${esc(focus)}</div>`:""}</div>`;
   }
   html+=`</div>
   <div class="acal-legend"><span><span class="acal-mark ok">✓</span> logged</span><span><span class="acal-mark pln">●</span> planned</span><span><span class="acal-mark cus">★</span> custom</span><span>😴 rest</span></div>
@@ -538,9 +540,20 @@ init();
 .acal{background:var(--card,#fff);border-radius:16px;padding:14px;margin-top:12px;box-shadow:0 1px 4px rgba(20,30,40,.06);}
 .acal-top{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
 .acal-month{flex:1;text-align:center;font-weight:800;font-size:19px;}
-.acal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;}
+.acal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;}
+@media(max-width:520px){
+  .acal-grid{gap:3px;}
+  .acal{padding:9px;}
+  .acal-cell{min-height:70px;padding:4px 3px;border-radius:8px;}
+  .acal-num{font-size:13px;}
+  .acal-mark{font-size:12.5px;}
+  .acal-focus{font-size:10px;-webkit-line-clamp:5;}
+}
 .acal-h{text-align:center;font-size:12.5px;font-weight:800;color:#6b7884;padding:4px 0;}
-.acal-cell{min-height:52px;border:1.5px solid #e7dfd0;border-radius:10px;padding:4px 5px;cursor:pointer;position:relative;background:#fff;display:flex;flex-direction:column;align-items:center;}
+.acal-cell{min-height:78px;border:1.5px solid #e7dfd0;border-radius:10px;padding:5px 5px;cursor:pointer;position:relative;background:#fff;display:flex;flex-direction:column;align-items:stretch;text-align:left;}
+.acal-cell-top{display:flex;align-items:center;justify-content:space-between;}
+.acal-focus{font-size:11.5px;line-height:1.25;font-weight:600;color:#425364;margin-top:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow-wrap:anywhere;}
+.acal-cell.past .acal-focus{color:#8a94a0;}
 .acal-cell.empty{border:none;background:transparent;cursor:default;}
 .acal-cell.past{background:#faf6ee;}
 .acal-cell.today{border-color:#2f8f86;border-width:2.5px;}
