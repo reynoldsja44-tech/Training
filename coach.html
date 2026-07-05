@@ -566,14 +566,42 @@ function applyTplForm(id){
   const opts=roster.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join("");
   document.getElementById("modalRoot").innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-h"><h3>Apply "${esc(t.name)}"</h3><button class="btn ghost sm" onclick="closeModal()">Close</button></div><div class="modal-b">
     <label class="fld"><span>Athlete</span><select class="in" id="apAth">${opts}</select></label>
-    <p class="muted">This replaces their current weekly program immediately. Their logs and one-off date plans are untouched.</p>
+    <label class="fld"><span>How to apply</span><select class="in" id="apMode" onchange="document.getElementById('apRange').style.display=this.value==='range'?'block':'none';document.getElementById('apWeeklyNote').style.display=this.value==='range'?'none':'block'">
+      <option value="range">Specific dates only (start → end)</option>
+      <option value="weekly">Ongoing weekly plan (repeats every week)</option>
+    </select></label>
+    <div id="apRange"><div class="row2">
+      <label class="fld"><span>Start date</span><input type="date" class="in" id="apStart" value="${todayISO()}"></label>
+      <label class="fld"><span>End date</span><input type="date" class="in" id="apEnd" value="${todayISO()}"></label>
+    </div>
+    <p class="muted">Each date gets the template's matching weekday session, written as one-off date plans. Nothing repeats outside this range. Existing one-off plans on these dates are replaced; other dates and logs are untouched.</p></div>
+    <p class="muted" id="apWeeklyNote" style="display:none">This replaces their current weekly program immediately and repeats every week until you change it. Their logs and one-off date plans are untouched.</p>
     <div class="row2" style="margin-top:12px"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="applyTplToAthlete('${t.id}')">Apply</button></div>
   </div></div></div>`;
 }
 async function applyTplToAthlete(tplId){
   const t=templates.find(x=>x.id===tplId);const aid=document.getElementById("apAth").value;const a=roster.find(x=>x.id===aid);
   if(!t||!a)return;
-  try{await DB.update(a.id,{program:JSON.parse(JSON.stringify(t.program||{days:[]}))});roster=await DB.list();closeModal();toast(`Applied to ${a.name} ✓`);}
+  const mode=document.getElementById("apMode").value;
+  if(mode==="weekly"){
+    try{await DB.update(a.id,{program:JSON.parse(JSON.stringify(t.program||{days:[]}))});roster=await DB.list();closeModal();toast(`Weekly plan applied to ${a.name} ✓`);}
+    catch(e){toast("Apply failed: "+e.message.slice(0,60),true);}
+    return;
+  }
+  const s=document.getElementById("apStart").value, en=document.getElementById("apEnd").value;
+  if(!s||!en||s>en){toast("Pick a valid start and end date",true);return;}
+  if((new Date(en+"T00:00:00")-new Date(s+"T00:00:00"))/864e5>92){toast("Range too long — 92 days max",true);return;}
+  const ov=JSON.parse(JSON.stringify(a.overrides||{}));
+  let n=0;
+  for(let d=new Date(s+"T00:00:00");iso(d)<=en;d.setDate(d.getDate()+1)){
+    const dow=DOW_OF[d.getDay()];
+    const day=(t.program.days||[]).find(x=>x.dow===dow);
+    if(!day)continue;
+    const copy=JSON.parse(JSON.stringify(day));delete copy.dow;
+    ov[iso(d)]=copy;n++;
+  }
+  if(!n){toast("Template has no weekdays matching that range",true);return;}
+  try{await DB.update(a.id,{overrides:ov});roster=await DB.list();closeModal();toast(`Planned ${n} day(s) for ${a.name} ✓`);}
   catch(e){toast("Apply failed: "+e.message.slice(0,60),true);}
 }
 async function applyTplHere(){
