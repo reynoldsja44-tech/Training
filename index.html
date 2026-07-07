@@ -47,7 +47,12 @@
   .note-line{margin:8px 2px;font-size:14px;color:#46535f;background:#f3efe5;border-radius:10px;padding:9px 11px;}
 
   .block{background:var(--card);border:1px solid var(--line);border-radius:16px;margin:12px 0;box-shadow:var(--shadow);overflow:hidden;}
-  .block-head{padding:13px 15px 11px;border-left:5px solid var(--strength);}
+  .block-head{padding:13px 15px 11px;border-left:5px solid var(--strength);display:flex;align-items:center;gap:8px;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;}
+  .clp-right{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+  .clp-count{font-size:12.5px;font-weight:800;color:var(--muted);background:#f0ece2;border-radius:999px;padding:2px 9px;}
+  .caret{font-size:19px;color:var(--muted);transition:transform .15s ease;line-height:1;}
+  .block.clps .caret{transform:rotate(-90deg);}
+  .block.clps .block-body{display:none;}
   .block-head .tag{font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--strength);}
   .block-head h3{margin:2px 0 0;font-size:18px;font-weight:700;}
   .block-head .sub{font-size:13.5px;color:var(--muted);margin-top:2px;}
@@ -175,6 +180,9 @@ const DB=DEMO?makeDemoDB():realDB;
 
 let athlete=null,program=null,logs=[],selDate=null,mode="day",backfill=false,sessionData={},extras=[];
 let calMonth=new Date();
+let collapsed={};
+function clpKey(bi){return selDate+"|"+bi;}
+function toggleBlock(id,headEl){collapsed[id]=!collapsed[id];headEl.closest(".block").classList.toggle("clps",!!collapsed[id]);}
 const dowOrder=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const fullDow=d=>({Mon:"Monday",Tue:"Tuesday",Wed:"Wednesday",Thu:"Thursday",Fri:"Friday",Sat:"Saturday",Sun:"Sunday"}[d]||d);
 const checkSVG='<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
@@ -274,12 +282,14 @@ function render(){
     html+=renderExtras();app.innerHTML=html;bindExtras();document.getElementById("savebar").style.display="block";updateSaveCount();return;
   }
   (day.blocks||[]).forEach((b,bi)=>{
-    html+=`<div class="block ${esc(b.kind||"strength")}"><div class="block-head"><div class="tag">${esc(b.tag||b.kind||"")}</div><h3>${esc(b.title||"")}</h3>${b.sub?`<div class="sub">${esc(b.sub)}</div>`:""}</div>`;
+    const ck=clpKey("b"+bi),isC=!!collapsed[ck];
+    const nEx=(b.ex||[]).length;
+    html+=`<div class="block ${esc(b.kind||"strength")} ${isC?"clps":""}"><div class="block-head" onclick="toggleBlock('${ck}',this)"><div style="flex:1;min-width:0"><div class="tag">${esc(b.tag||b.kind||"")}</div><h3>${esc(b.title||"")}</h3>${b.sub?`<div class="sub">${esc(b.sub)}</div>`:""}</div><div class="clp-right"><span class="clp-count">${nEx}</span><span class="caret">▾</span></div></div><div class="block-body">`;
     if(b.note)html+=`<div class="bnote plain">${esc(b.note)}</div>`;
     if(b.noteBone)html+=`<div class="bnote">🦴 ${esc(b.noteBone)}</div>`;
     if(b.noteWarn)html+=`<div class="bnote warn">⚠︎ ${esc(b.noteWarn)}</div>`;
     (b.ex||[]).forEach((e,ei)=>{html+=renderExercise(b,bi,e,ei,dateLogs);});
-    html+=`</div>`;
+    html+=`</div></div>`;
   });
   html+=renderExtras();
   app.innerHTML=html;bindExercises();bindExtras();
@@ -379,9 +389,10 @@ function redrawSets(k){const tb=document.querySelector(`[data-sets="${k}"]`);if(
 /* ---------------- extras ---------------- */
 function renderExtrasWrap(){return `<div style="margin-top:18px">${renderExtras()}</div>`;}
 function renderExtras(){
-  let h=`<div class="block extra"><div class="block-head"><div class="tag">Added by athlete</div><h3>Anything not on the plan</h3><div class="sub">Log an extra activity or something you swapped in.</div></div>`;
+  const ck=clpKey("extras"),isC=!!collapsed[ck];
+  let h=`<div class="block extra ${isC?"clps":""}"><div class="block-head" onclick="toggleBlock('${ck}',this)"><div style="flex:1;min-width:0"><div class="tag">Added by athlete</div><h3>Anything not on the plan</h3><div class="sub">Log an extra activity or something you swapped in.</div></div><div class="clp-right">${extras.length?`<span class="clp-count">${extras.length}</span>`:""}<span class="caret">▾</span></div></div><div class="block-body">`;
   extras.forEach((x,xi)=>{h+=renderExtraCard(x,xi);});
-  h+=`<div class="exwrap"><button class="mini" id="addExtraBtn">+ Add an activity</button></div></div>`;return h;
+  h+=`<div class="exwrap"><button class="mini" id="addExtraBtn">+ Add an activity</button></div></div></div>`;return h;
 }
 function renderExtraCard(x,xi){
   let h=`<div class="exwrap" data-extra="${xi}"><div style="flex:1">`;
