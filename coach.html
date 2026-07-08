@@ -384,7 +384,7 @@ function setTab(t){editTab=t;renderEditor();}
 /* ---------------- CALENDAR ---------------- */
 function logsByDate(){const m={};athLogs.forEach(l=>{(m[l.log_date]=m[l.log_date]||[]).push(l);});return m;}
 function programForDow(dow){return (editing.program.days||[]).find(d=>d.dow===dow);}
-function overrideFor(ds){const o=editing.overrides&&editing.overrides[ds];if(o&&(o.rest||(o.blocks&&o.blocks.length)||(o.focus&&o.focus.trim())))return o;return null;}
+function overrideFor(ds){const o=editing.overrides&&editing.overrides[ds];if(o&&(o.rest||(o.blocks&&o.blocks.length)||(o.focus&&o.focus.trim())||(o.note&&String(o.note).trim())))return o;return null;}
 function editDateOverride(ds){editTab="program";progMode="date";progDate=ds;renderEditor();}
 function renderCalendar(){
   const dirtyBanner=isDirty()?`<div class="card" style="border:1.5px solid #d9a03c;background:#fdf6e7"><div class="card-b" style="padding:10px 14px"><b>⚠ Previewing unsaved edits.</b> This calendar reflects changes you haven't saved yet — hit <b>Save program</b> to commit them, or they'll be discarded when you leave.</div></div>`:"";
@@ -412,7 +412,7 @@ function renderCalendar(){
       cls+=isRest?" rest":" done";label=isRest?"Rest":(dayLogs[0].day_focus||dayLogs[0].day_dow||"Logged");
     }else if(!past){
       const ov=overrideFor(ds);
-      if(ov){if(ov.rest){cls+=" rest";label="★ Rest";}else{cls+=" custom";label="★ "+(ov.focus||"Custom");}}
+      if(ov){if(ov.rest){cls+=" rest";label="★ Rest";}else{cls+=" custom";label="★ "+(ov.focus||ov.note||"Custom");}}
       else{const pd=programForDow(DOW_OF[new Date(ds+"T00:00:00").getDay()]);
         if(pd){if(pd.rest){cls+=" rest";label="Rest";}else{cls+=" planned";label=pd.focus||"Planned";}}}
     }
@@ -437,7 +437,7 @@ function renderCalDetail(ds){
   if(ov){
     let h=`<h3>${esc(nice)} <span class="pill" style="background:#efe9f5;color:#6a4f8f">★ custom for this date</span></h3>`;
     if(ov.rest)h+=`<div class="muted">Rest day.</div>`;
-    else{h+=`<div class="muted" style="margin-bottom:8px">${esc(ov.focus||"")}</div>`;(ov.blocks||[]).forEach(b=>{h+=`<div class="logday"><h4>${esc(b.title||b.tag||"Block")}</h4>`;(b.ex||[]).forEach(e=>{h+=`<div class="logrow"><span class="lx">${esc(e.name)}</span><span class="v">${esc(e.dose||"")}</span></div>`;});h+=`</div>`;});}
+    else{h+=`<div class="muted" style="margin-bottom:8px">${esc(ov.focus||"")}</div>`;if(ov.note)h+=`<div class="muted" style="margin-bottom:8px">📝 ${esc(ov.note)}</div>`;(ov.blocks||[]).forEach(b=>{h+=`<div class="logday"><h4>${esc(b.title||b.tag||"Block")}</h4>`;(b.ex||[]).forEach(e=>{h+=`<div class="logrow"><span class="lx">${esc(e.name)}</span><span class="v">${esc(e.dose||"")}</span></div>`;});h+=`</div>`;});}
     h+=`<div style="margin-top:10px"><button class="btn light sm" onclick="editDateOverride('${ds}')">Edit this date</button></div>`;
     return h;
   }

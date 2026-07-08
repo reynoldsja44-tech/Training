@@ -199,7 +199,7 @@ function exStyle(block,e){if((block.kind||"")==="cardio")return"cardio";if(/×|x
 function programForDow(dow){return (program.days||[]).find(d=>d.dow===dow);}
 function dayForDate(date){
   const ov=(athlete&&athlete.overrides)?athlete.overrides[date]:null;
-  if(ov&&(ov.rest||(ov.blocks&&ov.blocks.length)||(ov.focus&&String(ov.focus).trim())))return Object.assign({},ov,{dow:dowOf(date),_override:true});
+  if(ov&&(ov.rest||(ov.blocks&&ov.blocks.length)||(ov.focus&&String(ov.focus).trim())||(ov.note&&String(ov.note).trim())))return Object.assign({},ov,{dow:dowOf(date),_override:true});
   return programForDow(dowOf(date));
 }
 function logsForDate(date){return logs.filter(l=>l.log_date===date);}
@@ -508,8 +508,8 @@ function renderAthCal(){
     let mark="";
     if(logged)mark=`<span class="acal-mark ok">✓</span>`;
     else if(rest)mark=`<span class="acal-mark">😴</span>`;
-    else if(hasEx)mark=`<span class="acal-mark ${custom?"cus":"pln"}">${custom?"★":"●"}</span>`;
-    const focus=logged?(dayLogs[0].day_focus||dayLogs.map(l=>l.exercise_name).filter(Boolean)[0]||""):(day?(day.focus||(rest?"Rest":"")):"");
+    else if(hasEx||(day&&day.note&&String(day.note).trim()))mark=`<span class="acal-mark ${custom?"cus":"pln"}">${custom?"★":"●"}</span>`;
+    const focus=logged?(dayLogs[0].day_focus||dayLogs.map(l=>l.exercise_name).filter(Boolean)[0]||""):(day?(day.focus||(rest?"Rest":"")||day.note||""):"");
     const cls=["acal-cell",ds===tISO?"today":"",ds===selDate?"sel":"",ds<tISO?"past":""].join(" ");
     html+=`<div class="${cls}" onclick="onDateChange('${ds}')" title="${esc(focus)}"><div class="acal-cell-top"><span class="acal-num">${dn}</span>${mark}</div>${focus?`<div class="acal-focus">${esc(focus)}</div>`:""}</div>`;
   }
