@@ -144,26 +144,68 @@ const SB_URL="https://rkuwuuwkymetibzfmilk.supabase.co";
 const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrdXd1dXdreW1ldGliemZtaWxrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTQ5MjcsImV4cCI6MjA5NjUzMDkyN30.k7YOMavSufOZC3d7gm2vX9KXXHfBPOQqtD0cms64WX8";
 const REST=SB_URL+"/rest/v1";
 const DEMO=new URLSearchParams(location.search).get("demo")==="1";
-function H(){return {apikey:SB_KEY,Authorization:"Bearer "+SB_KEY};}
+
+/* ---------------- AUTH (coach login) ---------------- */
+const AUTH={
+  key:"coach_session",
+  get session(){try{return JSON.parse(localStorage.getItem(this.key));}catch(e){return null;}},
+  set session(s){s?localStorage.setItem(this.key,JSON.stringify(s)):localStorage.removeItem(this.key);},
+  valid(){const s=this.session;return !!(s&&s.access_token&&s.expires_at>Date.now()+30000);},
+  async login(email,pw){
+    const r=await fetch(`${SB_URL}/auth/v1/token?grant_type=password`,{method:"POST",headers:{apikey:SB_KEY,"Content-Type":"application/json"},body:JSON.stringify({email,password:pw})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error_description||d.msg||"Login failed");
+    this.session={access_token:d.access_token,refresh_token:d.refresh_token,expires_at:Date.now()+(d.expires_in||3600)*1000,email};
+  },
+  async refresh(){
+    const s=this.session;if(!s||!s.refresh_token)return false;
+    try{
+      const r=await fetch(`${SB_URL}/auth/v1/token?grant_type=refresh_token`,{method:"POST",headers:{apikey:SB_KEY,"Content-Type":"application/json"},body:JSON.stringify({refresh_token:s.refresh_token})});
+      const d=await r.json();
+      if(!r.ok)throw 0;
+      this.session={access_token:d.access_token,refresh_token:d.refresh_token||s.refresh_token,expires_at:Date.now()+(d.expires_in||3600)*1000,email:s.email};
+      return true;
+    }catch(e){return false;}
+  },
+  async ensureFresh(){
+    const s=this.session;if(!s)return false;
+    if(s.expires_at>Date.now()+120000)return true;
+    return await this.refresh();
+  },
+  logout(){this.session=null;location.reload();}
+};
+function H(){
+  const s=AUTH.session;
+  return {apikey:SB_KEY,Authorization:"Bearer "+((s&&s.access_token)||SB_KEY)};
+}
+async function sfetch(url,opts){
+  if(!DEMO)await AUTH.ensureFresh();
+  let r=await fetch(url,opts?{...opts,headers:{...(opts.headers||{}),...H()}}:{headers:H()});
+  if(r.status===401&&!DEMO&&await AUTH.refresh()){
+    r=await fetch(url,opts?{...opts,headers:{...(opts.headers||{}),...H()}}:{headers:H()});
+  }
+  if(r.status===401&&!DEMO){AUTH.session=null;renderLogin("Your session expired — sign in again.");throw new Error("Signed out");}
+  return r;
+}
 const realDB={
-  async list(){const r=await fetch(`${REST}/athletes?select=*&order=name`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
-  async create(a){const r=await fetch(`${REST}/athletes`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify(a)});if(!r.ok)throw new Error(await r.text());return (await r.json())[0];},
-  async update(id,patch){const r=await fetch(`${REST}/athletes?id=eq.${id}`,{method:"PATCH",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify(patch)});if(!r.ok)throw new Error(await r.text());},
-  async remove(id){const r=await fetch(`${REST}/athletes?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());},
-  async logs(slug){const r=await fetch(`${REST}/logs?athlete_slug=eq.${encodeURIComponent(slug)}&order=log_date.desc,created_at.desc`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
-  async delLog(id){const r=await fetch(`${REST}/logs?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());},
-  async libList(){const r=await fetch(`${REST}/exercises?select=*&order=kind,name`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
-  async libCreate(e){const r=await fetch(`${REST}/exercises`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify(e)});if(!r.ok)throw new Error(await r.text());return (await r.json())[0];},
-  async libUpdate(id,patch){const r=await fetch(`${REST}/exercises?id=eq.${id}`,{method:"PATCH",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify(patch)});if(!r.ok)throw new Error(await r.text());},
-  async libRemove(id){const r=await fetch(`${REST}/exercises?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());},
-  async grpList(){const r=await fetch(`${REST}/groups?select=*&order=name`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
-  async grpCreate(g){const r=await fetch(`${REST}/groups`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify(g)});if(!r.ok)throw new Error(await r.text());return (await r.json())[0];},
-  async grpUpdate(id,patch){const r=await fetch(`${REST}/groups?id=eq.${id}`,{method:"PATCH",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify(patch)});if(!r.ok)throw new Error(await r.text());},
-  async grpRemove(id){const r=await fetch(`${REST}/groups?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());},
-  async tplList(){const r=await fetch(`${REST}/templates?select=*&order=name`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
-  async tplCreate(t){const r=await fetch(`${REST}/templates`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify(t)});if(!r.ok)throw new Error(await r.text());return (await r.json())[0];},
-  async tplUpdate(id,patch){const r=await fetch(`${REST}/templates?id=eq.${id}`,{method:"PATCH",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify({...patch,updated_at:new Date().toISOString()})});if(!r.ok)throw new Error(await r.text());},
-  async tplRemove(id){const r=await fetch(`${REST}/templates?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());}
+  async list(){const r=await sfetch(`${REST}/athletes?select=*&order=name`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
+  async create(a){const r=await sfetch(`${REST}/athletes`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify(a)});if(!r.ok)throw new Error(await r.text());return (await r.json())[0];},
+  async update(id,patch){const r=await sfetch(`${REST}/athletes?id=eq.${id}`,{method:"PATCH",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify(patch)});if(!r.ok)throw new Error(await r.text());},
+  async remove(id){const r=await sfetch(`${REST}/athletes?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());},
+  async logs(slug){const r=await sfetch(`${REST}/logs?athlete_slug=eq.${encodeURIComponent(slug)}&order=log_date.desc,created_at.desc`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
+  async delLog(id){const r=await sfetch(`${REST}/logs?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());},
+  async libList(){const r=await sfetch(`${REST}/exercises?select=*&order=kind,name`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
+  async libCreate(e){const r=await sfetch(`${REST}/exercises`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify(e)});if(!r.ok)throw new Error(await r.text());return (await r.json())[0];},
+  async libUpdate(id,patch){const r=await sfetch(`${REST}/exercises?id=eq.${id}`,{method:"PATCH",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify(patch)});if(!r.ok)throw new Error(await r.text());},
+  async libRemove(id){const r=await sfetch(`${REST}/exercises?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());},
+  async grpList(){const r=await sfetch(`${REST}/groups?select=*&order=name`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
+  async grpCreate(g){const r=await sfetch(`${REST}/groups`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify(g)});if(!r.ok)throw new Error(await r.text());return (await r.json())[0];},
+  async grpUpdate(id,patch){const r=await sfetch(`${REST}/groups?id=eq.${id}`,{method:"PATCH",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify(patch)});if(!r.ok)throw new Error(await r.text());},
+  async grpRemove(id){const r=await sfetch(`${REST}/groups?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());},
+  async tplList(){const r=await sfetch(`${REST}/templates?select=*&order=name`,{headers:H()});if(!r.ok)throw new Error(await r.text());return r.json();},
+  async tplCreate(t){const r=await sfetch(`${REST}/templates`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify(t)});if(!r.ok)throw new Error(await r.text());return (await r.json())[0];},
+  async tplUpdate(id,patch){const r=await sfetch(`${REST}/templates?id=eq.${id}`,{method:"PATCH",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify({...patch,updated_at:new Date().toISOString()})});if(!r.ok)throw new Error(await r.text());},
+  async tplRemove(id){const r=await sfetch(`${REST}/templates?id=eq.${id}`,{method:"DELETE",headers:H()});if(!r.ok)throw new Error(await r.text());}
 };
 const DEMO_PROG={days:[
   {dow:"Mon",focus:"Strength A + Arms",badge:"55–60 min",blocks:[{kind:"strength",tag:"Strength",title:"Strength A — legs + push",sub:"cable + dumbbells",ex:[{name:"Goblet squat to box (DB)",dose:"3 × 8–10",cue:"Heels down",coachNote:"Start light."},{name:"Cable biceps curl",dose:"2 × 12",cue:"Elbows pinned"}]}]},
@@ -235,7 +277,33 @@ function libSearchInput(el){const p=el.selectionStart;libQ=el.value;renderLibrar
 function pickerSearchInput(el,di,bi,cat){const p=el.selectionStart;renderPicker(di,bi,el.value,cat);reFocus("pickerSearch",p);}
 function grpPickerSearchInput(el,cat){const p=el.selectionStart;renderGroupPicker(el.value,cat);reFocus("grpPickerSearch",p);}
 
-async function start(){ await goRoster(); }async function goRoster(){
+function renderLogin(msg){
+  document.getElementById("hCrumb").style.display="none";
+  document.getElementById("hTitle").textContent="Coach sign in";
+  document.getElementById("savebar").style.display="none";
+  document.getElementById("app").innerHTML=`<div class="card" style="max-width:420px;margin:40px auto"><div class="card-b">
+    <h2 style="margin-top:0">Sign in</h2>
+    ${msg?`<p class="muted" style="color:#b3423a">${esc(msg)}</p>`:`<p class="muted">Coach access only. Athlete pages don't need a login.</p>`}
+    <label class="fld"><span>Email</span><input class="in" id="liEmail" type="email" autocomplete="username"></label>
+    <label class="fld"><span>Password</span><input class="in" id="liPw" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></label>
+    <div style="margin-top:14px"><button class="btn primary" id="liBtn" onclick="doLogin()" style="width:100%">Sign in</button></div>
+  </div></div>`;
+}
+async function doLogin(){
+  const btn=document.getElementById("liBtn");btn.disabled=true;btn.textContent="Signing in…";
+  try{
+    await AUTH.login(document.getElementById("liEmail").value.trim(),document.getElementById("liPw").value);
+    await goRoster();
+  }catch(e){
+    btn.disabled=false;btn.textContent="Sign in";
+    renderLogin(e.message==="Failed to fetch"?"Couldn't reach the server.":e.message);
+  }
+}
+async function start(){
+  if(DEMO)return goRoster();
+  if(AUTH.valid()||await AUTH.refresh())return goRoster();
+  renderLogin();
+}async function goRoster(){
   editing=null;
   document.getElementById("hCrumb").style.display="none";
   document.getElementById("hTitle").textContent="Coach Dashboard";
@@ -248,6 +316,7 @@ function renderRoster(){
     <button class="btn light sm" onclick="openLibrary()">📚 Exercise library</button>
     <button class="btn light sm" onclick="openGroups()">🧩 Groups</button>
     <button class="btn light sm" onclick="openTemplates()">🗂 Weekly templates</button>
+    ${DEMO?"":`<button class="btn ghost sm" onclick="AUTH.logout()" title="Sign out">Sign out</button>`}
     <button class="btn primary sm" onclick="newAthlete()">+ Add athlete</button></div>`;
   if(!roster.length)h+=`<div class="empty"><div class="big">No athletes yet</div>Add your first person to assign them a program.</div>`;
   else roster.forEach(a=>{h+=`<div class="roster-row" onclick="openAthlete('${a.id}')"><div class="avatar">${esc((a.name||"?").slice(0,1).toUpperCase())}</div><div class="nm"><b>${esc(a.name)}</b><div class="slug">?athlete=${esc(a.slug)}</div></div><div class="arrow">›</div></div>`;});
