@@ -29,13 +29,13 @@
   .days::-webkit-scrollbar{display:none;}
   .day-pill{flex:0 0 auto;border:1.5px solid var(--line);background:var(--card);border-radius:14px;padding:9px 13px;min-width:58px;text-align:center;cursor:pointer;transition:.15s;}
   .day-pill .dow{font-weight:700;font-size:15px;}
-  .day-pill .fx{font-size:11px;color:var(--muted);margin-top:1px;line-height:1.15;}
+  .day-pill .fx{font-size:13px;color:#4a5763;font-weight:600;margin-top:1px;line-height:1.2;}
   .day-pill.active{background:var(--navy);border-color:var(--navy);color:#fff;box-shadow:var(--shadow);}
   .day-pill.active .fx{color:rgba(255,255,255,.75);}
   .day-pill.today:not(.active){border-color:var(--cardio);}
 
   .toolbar{display:flex;gap:8px;margin:14px 0 4px;flex-wrap:wrap;align-items:center;}
-  .chip{border:1.5px solid var(--line);background:var(--card);color:var(--ink);border-radius:11px;padding:8px 13px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;}
+  .chip{border:1.5px solid var(--line);background:var(--card);color:var(--ink);border-radius:11px;padding:8px 13px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;}
   .chip:active{transform:scale(.97);}
   .chip.on{background:var(--navy);color:#fff;border-color:var(--navy);}
   .datefield{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:14px;color:var(--muted);}
@@ -43,8 +43,8 @@
 
   .day-head{margin:18px 2px 4px;}
   .day-head h2{font-family:"Fraunces",serif;font-weight:600;font-size:23px;margin:0;}
-  .day-head .meta{color:var(--muted);font-size:14px;margin-top:2px;}
-  .note-line{margin:8px 2px;font-size:14px;color:#46535f;background:#f3efe5;border-radius:10px;padding:9px 11px;}
+  .day-head .meta{color:#3a4754;font-size:17px;font-weight:700;margin-top:3px;line-height:1.3;}
+  .note-line{margin:8px 2px;font-size:15.5px;color:#46535f;background:#f3efe5;border-radius:10px;padding:9px 11px;}
 
   .block{background:var(--card);border:1px solid var(--line);border-radius:16px;margin:12px 0;box-shadow:var(--shadow);overflow:hidden;}
   .block-head{padding:13px 15px 11px;border-left:5px solid var(--strength);display:flex;align-items:center;gap:8px;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;}
@@ -53,14 +53,14 @@
   .caret{font-size:19px;color:var(--muted);transition:transform .15s ease;line-height:1;}
   .block.clps .caret{transform:rotate(-90deg);}
   .block.clps .block-body{display:none;}
-  .block-head .tag{font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--strength);}
-  .block-head h3{margin:2px 0 0;font-size:18px;font-weight:700;}
-  .block-head .sub{font-size:13.5px;color:var(--muted);margin-top:2px;}
+  .block-head .tag{font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--strength);}
+  .block-head h3{margin:2px 0 0;font-size:19.5px;font-weight:700;}
+  .block-head .sub{font-size:15px;color:var(--muted);margin-top:2px;}
   .block.cardio .block-head{border-color:var(--cardio);}.block.cardio .tag{color:var(--cardio);}
   .block.accessory .block-head{border-color:var(--accessory);}.block.accessory .tag{color:var(--accessory);}
   .block.core .block-head{border-color:var(--core);}.block.core .tag{color:var(--core);}
   .block.extra .block-head{border-color:var(--extra);}.block.extra .tag{color:var(--extra);}
-  .bnote{margin:0 15px 11px;font-size:14px;border-radius:10px;padding:9px 11px;background:#eef0fb;color:#3f4674;}
+  .bnote{margin:0 15px 11px;font-size:15.5px;border-radius:10px;padding:9px 11px;background:#eef0fb;color:#3f4674;}
   .bnote.warn{background:var(--warnbg);color:var(--warn);}
   .bnote.plain{background:#f3efe5;color:#46535f;}
 
@@ -71,13 +71,13 @@
   .done-btn svg{width:16px;height:16px;opacity:0;transform:scale(.5);transition:.15s;}
   .exwrap.done .done-btn{background:var(--ok);border-color:var(--ok);}
   .exwrap.done .done-btn svg{opacity:1;transform:scale(1);}
-  .ex-name{font-weight:600;font-size:16.5px;line-height:1.25;}
-  .ex-dose{display:inline-block;font-size:13.5px;font-weight:700;color:var(--strength);background:#eaf1f8;border-radius:7px;padding:1px 8px;margin-top:4px;}
+  .ex-name{font-weight:600;font-size:18px;line-height:1.25;}
+  .ex-dose{display:inline-block;font-size:15px;font-weight:700;color:var(--strength);background:#eaf1f8;border-radius:7px;padding:1px 8px;margin-top:4px;}
   .block.cardio .ex-dose{color:var(--cardio);background:#e3f2f0;}
   .block.accessory .ex-dose{color:#4f7a42;background:#eef4ea;}
   .block.core .ex-dose{color:var(--core);background:#f8ece4;}
-  .ex-cue{font-size:13.5px;color:var(--muted);margin-top:4px;line-height:1.4;}
-  .ex-coachnote{font-size:13.5px;margin-top:6px;background:#eef3f9;border-left:3px solid var(--strength);border-radius:0 8px 8px 0;padding:6px 9px;color:#33485c;}
+  .ex-cue{font-size:15px;color:#5a6773;margin-top:4px;line-height:1.42;}
+  .ex-coachnote{font-size:15px;margin-top:6px;background:#eef3f9;border-left:3px solid var(--strength);border-radius:0 8px 8px 0;padding:6px 9px;color:#33485c;}
   .ex-coachnote b{color:var(--strength);}
 
   .sets{margin:10px 0 0;}
@@ -85,19 +85,19 @@
   .sets th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);text-align:left;padding:0 6px 4px;font-weight:700;}
   .sets td{padding:3px 6px 3px 0;}
   .sets td:first-child{width:30px;color:var(--muted);font-weight:700;font-size:14px;text-align:center;padding-right:8px;}
-  .sets input{width:100%;font-family:inherit;font-size:16px;border:1.5px solid var(--line);border-radius:9px;padding:8px;background:#fff;color:var(--ink);text-align:center;}
+  .sets input{width:100%;font-family:inherit;font-size:17px;border:1.5px solid var(--line);border-radius:9px;padding:8px;background:#fff;color:var(--ink);text-align:center;}
   .sets input:focus{outline:none;border-color:var(--strength);}
   .setbtns{display:flex;gap:8px;margin-top:7px;}
-  .mini{font-size:13px;border:1.5px solid var(--line);background:#fff;border-radius:9px;padding:5px 10px;cursor:pointer;font-family:inherit;color:var(--muted);font-weight:600;}
+  .mini{font-size:14px;border:1.5px solid var(--line);background:#fff;border-radius:9px;padding:5px 10px;cursor:pointer;font-family:inherit;color:var(--muted);font-weight:600;}
   .rm{width:30px;color:#b06a6a;border:none;background:none;font-size:18px;cursor:pointer;padding:0;}
-  .exnote{width:100%;font-family:inherit;font-size:14.5px;border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:9px;background:#fff;color:var(--ink);resize:vertical;min-height:38px;}
-  .lastval{font-size:12px;color:var(--muted);margin-top:5px;}
+  .exnote{width:100%;font-family:inherit;font-size:15.5px;border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:9px;background:#fff;color:var(--ink);resize:vertical;min-height:38px;}
+  .lastval{font-size:13.5px;color:var(--muted);margin-top:5px;}
 
   .cardio-fields{margin-top:10px;}
   .cardio-fields .row2{display:flex;gap:9px;margin-top:8px;}
   .cardio-fields .row2>label{flex:1;}
-  .cardio-fields label{display:block;font-size:12px;color:var(--muted);font-weight:700;}
-  .cardio-fields input,.cardio-fields select{width:100%;font-family:inherit;font-size:16px;border:1.5px solid var(--line);border-radius:9px;padding:9px;background:#fff;color:var(--ink);margin-top:3px;}
+  .cardio-fields label{display:block;font-size:13.5px;color:var(--muted);font-weight:700;}
+  .cardio-fields input,.cardio-fields select{width:100%;font-family:inherit;font-size:17px;border:1.5px solid var(--line);border-radius:9px;padding:9px;background:#fff;color:var(--ink);margin-top:3px;}
   .cardio-fields input:focus,.cardio-fields select:focus{outline:none;border-color:var(--cardio);}
 
   .kindtoggle{display:flex;gap:7px;margin:8px 0;}
@@ -123,7 +123,7 @@
 
   .hist-day{background:var(--card);border:1px solid var(--line);border-radius:14px;margin:11px 0;box-shadow:var(--shadow);overflow:hidden;}
   .hist-day h4{margin:0;padding:12px 15px;font-size:16px;background:#f1ece1;}
-  .hist-row{display:flex;gap:8px;align-items:center;padding:9px 15px;border-top:1px solid #f0ebdf;font-size:14.5px;flex-wrap:wrap;}
+  .hist-row{display:flex;gap:8px;align-items:center;padding:9px 15px;border-top:1px solid #f0ebdf;font-size:15.5px;flex-wrap:wrap;}
   .hist-row .hx{flex:1;min-width:120px;font-weight:600;}
   .hist-row input{font-family:inherit;font-size:14px;border:1.5px solid var(--line);border-radius:8px;padding:5px 7px;background:#fff;color:var(--ink);width:62px;text-align:center;}
   .hist-row .hnote{flex-basis:100%;font-size:13px;color:var(--muted);}
@@ -147,6 +147,8 @@
 </div>
 <div class="toast" id="toast"></div>
 
+<div id="printRoot" aria-hidden="true"></div>
+<style id="pageOrient"></style>
 <script>
 const SB_URL="https://rkuwuuwkymetibzfmilk.supabase.co";
 const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrdXd1dXdreW1ldGliemZtaWxrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTQ5MjcsImV4cCI6MjA5NjUzMDkyN30.k7YOMavSufOZC3d7gm2vX9KXXHfBPOQqtD0cms64WX8";
@@ -246,6 +248,8 @@ function renderDateNav(){
     <button class="chip navchip" onclick="shiftDate(1)">›</button>
     <button class="chip ${selDate===todayISO()&&mode==='day'&&!backfill?'on':''}" onclick="goToday()">Today</button>
     <button class="chip ${mode==='calendar'?'on':''}" onclick="openCal()">📅 Month</button>
+    <button class="chip" onclick="printWeek()">🖨 Week</button>
+    <button class="chip" onclick="printDay()">🖨 Day</button>
     <button class="chip ${mode==='history'?'on':''}" onclick="setMode('history')">History</button>
     <button class="chip" onclick="markRest()">😴 Rest</button>
   </div>`;
@@ -477,6 +481,45 @@ async function markRest(){
 
 function setMode(m){mode=m;sessionData={};extras=[];render();}
 
+/* ---------------- printable week / day ---------------- */
+function addDays(ds,n){const d=new Date(ds+"T00:00:00");d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
+function buildPrintDay(ds){
+  const fmt=new Date(ds+"T00:00:00").toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
+  const day=dayForDate(ds);
+  let h=`<div class="pw-day"><div class="pw-dayhead"><span class="pw-date">${esc(fmt)}</span>${day&&day._override?`<span class="pw-badge">★</span>`:""}</div>`;
+  if(day&&day.focus)h+=`<div class="pw-focus">${esc(day.focus)}${day.badge?` <span class="pw-badge">${esc(day.badge)}</span>`:""}</div>`;
+  if(!day){h+=`<div class="pw-empty">No workout scheduled</div></div>`;return h;}
+  if(day.note)h+=`<div class="pw-note">${esc(day.note)}</div>`;
+  const hasEx=(day.blocks||[]).some(b=>(b.ex||[]).length>0);
+  if(day.rest&&!hasEx){h+=`<div class="pw-empty">Rest day${(day.blocks&&day.blocks[0]&&day.blocks[0].note)?" — "+esc(day.blocks[0].note):""}</div></div>`;return h;}
+  if(!hasEx&&!day.note){h+=`<div class="pw-empty">Nothing planned</div></div>`;return h;}
+  (day.blocks||[]).forEach(b=>{
+    if(!(b.ex||[]).length&&!b.note)return;
+    h+=`<div class="pw-block"><div class="pw-btitle">${esc(b.title||b.tag||"")}${b.sub?` <span class="pw-bsub">· ${esc(b.sub)}</span>`:""}</div>`;
+    if(b.note)h+=`<div class="pw-bnote">${esc(b.note)}</div>`;
+    (b.ex||[]).forEach(e=>{
+      h+=`<div class="pw-ex"><span class="pw-exname">${esc(e.name||"")}</span>${e.dose?`<span class="pw-exdose">${esc(e.dose)}</span>`:""}${e.cue?`<div class="pw-excue">${esc(e.cue)}</div>`:""}</div>`;
+    });
+    h+=`</div>`;
+  });
+  h+=`</div>`;return h;
+}
+function printSheet(start,nDays){
+  const end=addDays(start,nDays-1);
+  const fmtShort=ds=>new Date(ds+"T00:00:00").toLocaleDateString(undefined,{month:"short",day:"numeric"});
+  const range=nDays===1?fmtShort(start):`${fmtShort(start)} – ${fmtShort(end)}`;
+  let h=`<div class="pw-sheet ${nDays===1?"single":"week"}">
+    <div class="pw-head"><div class="pw-name">${esc(athlete&&athlete.name||"")}</div><div class="pw-range">Training plan · ${range}</div></div>
+    <div class="pw-days">`;
+  for(let i=0;i<nDays;i++)h+=buildPrintDay(addDays(start,i));
+  h+=`</div><div class="pw-foot">Printed ${new Date().toLocaleDateString()} · plan may change — check your page for the latest</div></div>`;
+  document.getElementById("printRoot").innerHTML=h;
+  document.getElementById("pageOrient").textContent=`@page{size:${nDays===1?"portrait":"landscape"};margin:8mm;}`;
+  window.print();
+}
+function printWeek(){printSheet(selDate||todayISO(),7);}
+function printDay(){printSheet(selDate||todayISO(),1);}
+
 /* ---------------- month calendar ---------------- */
 function openCal(){calMonth=new Date(selDate+"T00:00:00");setMode("calendar");}
 function calNav(d){calMonth=new Date(calMonth.getFullYear(),calMonth.getMonth()+d,1);render();}
@@ -548,6 +591,57 @@ document.getElementById("saveBtn").onclick=saveWorkout;
 init();
 </script>
 <style>
+#printRoot{display:none;}
+@media print{
+  body>*{display:none !important;}
+  body>#printRoot{display:block !important;}
+  body{background:#fff !important;margin:0;}
+  html,body{height:auto;}
+  .pw-sheet{font-family:Georgia,'Times New Roman',serif;color:#111;}
+  .pw-head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #111;padding-bottom:3px;margin-bottom:6px;}
+  .pw-name{font-weight:700;}
+  .pw-day{border:1px solid #999;border-radius:5px;padding:5px 6px;break-inside:avoid;}
+  .pw-dayhead{display:flex;align-items:baseline;justify-content:space-between;gap:4px;border-bottom:1px solid #ddd;padding-bottom:2px;margin-bottom:3px;}
+  .pw-date{font-weight:700;}
+  .pw-focus{font-weight:700;margin-bottom:2px;}
+  .pw-badge{font-size:.82em;border:1px solid #999;border-radius:8px;padding:0 4px;white-space:nowrap;}
+  .pw-note{font-style:italic;margin:1px 0 3px;}
+  .pw-empty{color:#555;font-style:italic;}
+  .pw-block{margin:3px 0;}
+  .pw-btitle{font-weight:700;}
+  .pw-bsub{font-weight:400;color:#444;}
+  .pw-bnote{font-style:italic;color:#333;}
+  .pw-ex{margin:1px 0 2px 4px;}
+  .pw-exname{font-weight:600;}
+  .pw-exdose{margin-left:5px;color:#333;}
+  .pw-excue{color:#444;}
+  .pw-foot{margin-top:5px;text-align:center;color:#666;}
+
+  /* WEEK: 7 columns, one landscape page */
+  .pw-sheet.week{font-size:9px;line-height:1.3;}
+  .pw-sheet.week .pw-name{font-size:15px;}
+  .pw-sheet.week .pw-range{font-size:10px;}
+  .pw-sheet.week .pw-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;align-items:start;}
+  .pw-sheet.week .pw-date{font-size:8.6px;}
+  .pw-sheet.week .pw-focus{font-size:10.5px;line-height:1.2;font-weight:800;}
+  .pw-sheet.week .pw-btitle{font-size:9.5px;}
+  .pw-sheet.week .pw-bnote{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+  .pw-sheet.week .pw-excue{font-size:8px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+  .pw-sheet.week .pw-foot{font-size:7.5px;}
+
+  /* DAY: single column, roomy portrait */
+  .pw-sheet.single{font-size:14px;line-height:1.45;max-width:17cm;margin:0 auto;}
+  .pw-sheet.single .pw-name{font-size:22px;}
+  .pw-sheet.single .pw-range{font-size:14px;}
+  .pw-sheet.single .pw-days{display:block;}
+  .pw-sheet.single .pw-day{padding:11px 15px;}
+  .pw-sheet.single .pw-date{font-size:15.5px;}
+  .pw-sheet.single .pw-focus{font-size:17px;font-weight:800;}
+  .pw-sheet.single .pw-btitle{font-size:14.5px;}
+  .pw-sheet.single .pw-ex{margin:4px 0 6px 10px;}
+  .pw-sheet.single .pw-excue{font-size:12.5px;}
+  .pw-sheet.single .pw-foot{font-size:10px;margin-top:10px;}
+}
 .acal{background:var(--card,#fff);border-radius:16px;padding:14px;margin-top:12px;box-shadow:0 1px 4px rgba(20,30,40,.06);}
 .acal-top{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
 .acal-month{flex:1;text-align:center;font-weight:800;font-size:19px;}
