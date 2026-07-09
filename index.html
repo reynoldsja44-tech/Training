@@ -504,7 +504,39 @@ function buildPrintDay(ds){
   });
   h+=`</div>`;return h;
 }
-function printSheet(start,nDays){
+const PW_CSS=`
+.pw-sheet{font-family:Georgia,'Times New Roman',serif;color:#111;}
+.pw-head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #111;padding-bottom:3px;margin-bottom:6px;}
+.pw-name{font-weight:700;font-size:1.6em;}
+.pw-range{font-size:1.1em;}
+.pw-day{border:1px solid #999;border-radius:5px;padding:5px 6px;break-inside:avoid;}
+.pw-dayhead{display:flex;align-items:baseline;justify-content:space-between;gap:4px;border-bottom:1px solid #ddd;padding-bottom:2px;margin-bottom:3px;}
+.pw-date{font-weight:700;font-size:.96em;}
+.pw-focus{font-weight:800;font-size:1.17em;line-height:1.2;margin-bottom:2px;}
+.pw-badge{font-size:.82em;border:1px solid #999;border-radius:8px;padding:0 4px;white-space:nowrap;}
+.pw-note{font-style:italic;margin:1px 0 3px;}
+.pw-empty{color:#555;font-style:italic;}
+.pw-block{margin:3px 0;}
+.pw-btitle{font-weight:700;font-size:1.06em;}
+.pw-bsub{font-weight:400;color:#444;}
+.pw-bnote{font-style:italic;color:#333;}
+.pw-ex{margin:1px 0 2px 4px;}
+.pw-exname{font-weight:600;}
+.pw-exdose{margin-left:5px;color:#333;}
+.pw-excue{color:#444;font-size:.89em;}
+.pw-foot{margin-top:5px;text-align:center;color:#666;font-size:.8em;}
+.pw-sheet.week{line-height:1.3;}
+.pw-sheet.week .pw-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;align-items:start;}
+.pw-sheet.week .pw-bnote{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+.pw-sheet.week .pw-excue{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+.pw-sheet.single{line-height:1.45;}
+.pw-sheet.single .pw-days{display:block;}
+.pw-sheet.single .pw-day{padding:.8em 1em;}
+.pw-sheet.single .pw-date{font-size:1.11em;}
+.pw-sheet.single .pw-focus{font-size:1.21em;}
+.pw-sheet.single .pw-ex{margin:.25em 0 .4em .7em;}
+`;
+function buildSheetHTML(start,nDays){
   const end=addDays(start,nDays-1);
   const fmtShort=ds=>new Date(ds+"T00:00:00").toLocaleDateString(undefined,{month:"short",day:"numeric"});
   const range=nDays===1?fmtShort(start):`${fmtShort(start)} – ${fmtShort(end)}`;
@@ -513,9 +545,44 @@ function printSheet(start,nDays){
     <div class="pw-days">`;
   for(let i=0;i<nDays;i++)h+=buildPrintDay(addDays(start,i));
   h+=`</div><div class="pw-foot">Printed ${new Date().toLocaleDateString()} · plan may change — check your page for the latest</div></div>`;
-  document.getElementById("printRoot").innerHTML=h;
-  document.getElementById("pageOrient").textContent=`@page{size:${nDays===1?"portrait":"landscape"};margin:8mm;}`;
-  window.print();
+  return h;
+}
+function printSheet(start,nDays){
+  const orient=nDays===1?"portrait":"landscape";
+  // printable area for US Letter minus 8mm margins, in CSS px (96dpi)
+  const bodyW=nDays===1?756:996, availH=nDays===1?996:756;
+  const base=nDays===1?14:9, minS=nDays===1?9:6.5, maxS=14;
+  try{
+    const f=document.createElement("iframe");
+    f.setAttribute("aria-hidden","true");
+    f.style.cssText=`position:fixed;right:0;bottom:0;width:${bodyW}px;height:10px;border:0;visibility:hidden;pointer-events:none;`;
+    document.body.appendChild(f);
+    const d=f.contentDocument;
+    d.open();
+    d.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Training plan</title><style>@page{size:${orient};margin:8mm;}html,body{margin:0;padding:0;}body{width:${bodyW}px;}${PW_CSS}</style></head><body>${buildSheetHTML(start,nDays)}</body></html>`);
+    d.close();
+    const sheet=d.querySelector(".pw-sheet");
+    // auto-fit: grow or shrink type to fill exactly one page
+    let size=base;
+    for(let i=0;i<5;i++){
+      sheet.style.fontSize=size+"px";
+      const h=sheet.scrollHeight;
+      if(!h)break; // no layout engine (shouldn't happen in real browsers)
+      if(h>availH)size=Math.max(minS,size*Math.max(.7,(availH/h)*.97));
+      else if(h<availH*.88&&size<maxS)size=Math.min(maxS,size*Math.min(1.25,(availH/h)*.95));
+      else break;
+    }
+    sheet.style.fontSize=size+"px";
+    if(sheet.scrollHeight>availH&&size>minS)sheet.style.fontSize=Math.max(minS,size*(availH/sheet.scrollHeight)*.97)+"px";
+    f.contentWindow.focus();
+    f.contentWindow.print();
+    setTimeout(()=>{try{f.remove();}catch(e){}},60000);
+  }catch(e){
+    // fallback: in-page print via printRoot
+    document.getElementById("printRoot").innerHTML=buildSheetHTML(start,nDays);
+    document.getElementById("pageOrient").textContent=`@page{size:${orient};margin:8mm;}@media print{body>*{display:none !important;}body>#printRoot{display:block !important;}body{background:#fff !important;margin:0 !important;padding:0 !important;height:auto !important;}#printRoot .pw-sheet{font-size:${base}px;}${PW_CSS}}`;
+    window.print();
+  }
 }
 function printWeek(){printSheet(selDate||todayISO(),7);}
 function printDay(){printSheet(selDate||todayISO(),1);}
@@ -592,56 +659,6 @@ init();
 </script>
 <style>
 #printRoot{display:none;}
-@media print{
-  body>*{display:none !important;}
-  body>#printRoot{display:block !important;}
-  body{background:#fff !important;margin:0;}
-  html,body{height:auto;}
-  .pw-sheet{font-family:Georgia,'Times New Roman',serif;color:#111;}
-  .pw-head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #111;padding-bottom:3px;margin-bottom:6px;}
-  .pw-name{font-weight:700;}
-  .pw-day{border:1px solid #999;border-radius:5px;padding:5px 6px;break-inside:avoid;}
-  .pw-dayhead{display:flex;align-items:baseline;justify-content:space-between;gap:4px;border-bottom:1px solid #ddd;padding-bottom:2px;margin-bottom:3px;}
-  .pw-date{font-weight:700;}
-  .pw-focus{font-weight:700;margin-bottom:2px;}
-  .pw-badge{font-size:.82em;border:1px solid #999;border-radius:8px;padding:0 4px;white-space:nowrap;}
-  .pw-note{font-style:italic;margin:1px 0 3px;}
-  .pw-empty{color:#555;font-style:italic;}
-  .pw-block{margin:3px 0;}
-  .pw-btitle{font-weight:700;}
-  .pw-bsub{font-weight:400;color:#444;}
-  .pw-bnote{font-style:italic;color:#333;}
-  .pw-ex{margin:1px 0 2px 4px;}
-  .pw-exname{font-weight:600;}
-  .pw-exdose{margin-left:5px;color:#333;}
-  .pw-excue{color:#444;}
-  .pw-foot{margin-top:5px;text-align:center;color:#666;}
-
-  /* WEEK: 7 columns, one landscape page */
-  .pw-sheet.week{font-size:9px;line-height:1.3;}
-  .pw-sheet.week .pw-name{font-size:15px;}
-  .pw-sheet.week .pw-range{font-size:10px;}
-  .pw-sheet.week .pw-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;align-items:start;}
-  .pw-sheet.week .pw-date{font-size:8.6px;}
-  .pw-sheet.week .pw-focus{font-size:10.5px;line-height:1.2;font-weight:800;}
-  .pw-sheet.week .pw-btitle{font-size:9.5px;}
-  .pw-sheet.week .pw-bnote{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
-  .pw-sheet.week .pw-excue{font-size:8px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
-  .pw-sheet.week .pw-foot{font-size:7.5px;}
-
-  /* DAY: single column, roomy portrait */
-  .pw-sheet.single{font-size:14px;line-height:1.45;max-width:17cm;margin:0 auto;}
-  .pw-sheet.single .pw-name{font-size:22px;}
-  .pw-sheet.single .pw-range{font-size:14px;}
-  .pw-sheet.single .pw-days{display:block;}
-  .pw-sheet.single .pw-day{padding:11px 15px;}
-  .pw-sheet.single .pw-date{font-size:15.5px;}
-  .pw-sheet.single .pw-focus{font-size:17px;font-weight:800;}
-  .pw-sheet.single .pw-btitle{font-size:14.5px;}
-  .pw-sheet.single .pw-ex{margin:4px 0 6px 10px;}
-  .pw-sheet.single .pw-excue{font-size:12.5px;}
-  .pw-sheet.single .pw-foot{font-size:10px;margin-top:10px;}
-}
 .acal{background:var(--card,#fff);border-radius:16px;padding:14px;margin-top:12px;box-shadow:0 1px 4px rgba(20,30,40,.06);}
 .acal-top{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
 .acal-month{flex:1;text-align:center;font-weight:800;font-size:19px;}
