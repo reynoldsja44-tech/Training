@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--paper:#f4f1ea;--card:#fffdf9;--ink:#22303c;--muted:#6b7884;--line:#e0d9c9;--navy:#16324f;
-    --strength:#3b6ea5;--cardio:#2f8f86;--accessory:#6a9a5b;--core:#c2754e;--ok:#2f8f86;--red:#a85a5a;--extra:#8a6fb0;
+    --strength:#3b6ea5;--cardio:#2f8f86;--accessory:#6a9a5b;--core:#c2754e;--mobility:#7b6aa8;--ok:#2f8f86;--red:#a85a5a;--extra:#8a6fb0;
     --shadow:0 1px 3px rgba(40,50,60,.06),0 5px 18px rgba(40,50,60,.07);}
   *{box-sizing:border-box;}
   body{margin:0;background:var(--paper);color:var(--ink);font-family:"Hanken Grotesk",system-ui,sans-serif;font-size:16px;line-height:1.45;padding-bottom:80px;}
@@ -60,7 +60,7 @@
   .day-b{padding:11px 13px;}
   .blk{border:1px solid var(--line);border-left:5px solid var(--strength);border-radius:0 11px 11px 0;margin:10px 0;padding:11px;background:#fff;}
   .blk[data-kind="cardio"]{border-left-color:var(--cardio);}
-  .blk[data-kind="accessory"]{border-left-color:var(--accessory);}
+  .blk[data-kind="accessory"]{border-left-color:var(--accessory);}.blk[data-kind="mobility"]{border-left-color:var(--mobility);}
   .blk[data-kind="core"]{border-left-color:var(--core);}
   .blk-top{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;}
   .ex{display:flex;gap:7px;align-items:flex-start;padding:8px;border:1px solid #eee4d2;border-radius:10px;margin:7px 0;background:#fffdf8;flex-wrap:wrap;}
@@ -121,7 +121,7 @@
   .libitem .li-nm{flex:1;}.libitem .li-nm b{font-size:15px;}
   .kindbadge{font-size:10px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;border-radius:6px;padding:2px 6px;}
   .kindbadge.strength{background:#eaf1f8;color:#3b6ea5;}.kindbadge.cardio{background:#e3f2f0;color:#2f8f86;}
-  .kindbadge.accessory{background:#eef4ea;color:#4f7a42;}.kindbadge.core{background:#f8ece4;color:#c2754e;}
+  .kindbadge.accessory{background:#eef4ea;color:#4f7a42;}.kindbadge.core{background:#f8ece4;color:#c2754e;}.kindbadge.mobility{background:#efeaf5;color:#6a4f8f;}
 </style>
 </head>
 <body>
@@ -248,7 +248,7 @@ function makeMock(){
 }
 const DB=DEMO?makeMock():realDB;
 
-const KINDS=["strength","cardio","accessory","core"];
+const KINDS=["strength","cardio","core","mobility","accessory"];
 const DOWS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const DOW_OF=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 let roster=[], editing=null, editTab="calendar", athLogs=[], library=[];
@@ -536,91 +536,99 @@ function renderBlockEditor(di,bi,b){
   h+=`<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary sm" onclick="openExPicker(${di},${bi})">+ Add from library</button><button class="btn light sm" onclick="addBlankEx(${di},${bi})">+ Blank exercise</button></div></div>`;
   return h;
 }
-/* ---------- Structured dose (sets / reps / type) ----------
-   Every exercise keeps a derived `dose` string for the athlete view + backward
-   compat. Structured fields: sets, reps, repType (reps|time|distance|cal),
-   repUnit (sec|min for time; m|km|mi for distance), detail (leftover like
-   "@ 135 lb" or "/ side"). Legacy entries are auto-parsed from `dose` on edit;
-   anything unparseable is preserved verbatim in `detail` (the fallback). */
-const TIME_UNITS=["sec","min"], DIST_UNITS=["m","km","mi"];
+/* ---------- Multi-metric prescription ----------
+   Sets + any of reps / weight / time / distance / cal (e.metrics = enabled list).
+   Values: reps, weight, time(+timeUnit), dist(+distUnit), cal. detail = freeform.
+   A derived `dose` string is kept for the athlete view + backward compat. Legacy
+   entries are auto-parsed from `dose` on first edit. */
+const TIME_UNITS=["sec","min"], DIST_UNITS=["m","km","mi","yd"];
+const METRIC_ORDER=["reps","weight","time","distance","cal"];
+const METRIC_LABEL={reps:"Reps",weight:"Weight",time:"Time",distance:"Dist",cal:"Cal"};
+function canonMetrics(a){return METRIC_ORDER.filter(m=>Array.isArray(a)&&a.includes(m));}
+function hasM(e,m){return Array.isArray(e.metrics)&&e.metrics.includes(m);}
+function ne(v){return v!=null&&(""+v).trim()!=="";}
 function deriveDose(e){
+  const q=[];
+  if(hasM(e,"reps")&&ne(e.reps))q.push((""+e.reps).trim());
+  if(hasM(e,"time")&&ne(e.time))q.push((""+e.time).trim()+" "+(e.timeUnit||"sec"));
+  if(hasM(e,"distance")&&ne(e.dist))q.push((""+e.dist).trim()+" "+(e.distUnit||"m"));
+  if(hasM(e,"cal")&&ne(e.cal))q.push((""+e.cal).trim()+" cal");
+  let core=q.join(" / ");
   const sets=(e.sets==null?"":(""+e.sets)).trim();
-  const reps=(e.reps==null?"":(""+e.reps)).trim();
-  const t=e.repType||"", unit=e.repUnit||"";
+  if(sets&&core)core=sets+" × "+core; else if(sets&&!core)core=sets+" ×";
+  if(hasM(e,"weight")&&ne(e.weight)){const w=(""+e.weight).trim();core=(core?core+" ":"")+"@ "+w+(/\d$/.test(w)?" lb":"");}
   const detail=(e.detail==null?"":(""+e.detail)).trim();
-  let core="";
-  if(reps){
-    const unitLabel=(t==="distance"||t==="time")?unit:(t==="cal"?"cal":"");
-    const val=reps+(unitLabel?(" "+unitLabel):"");
-    core=(sets!=="")?(sets+" × "+val):val;
-  } else if(sets!==""){ core=sets+" ×"; }
-  let out=core;
-  if(detail) out=out?(out+" "+detail):detail;
-  return out.trim();
+  if(detail)core=(core?core+" ":"")+detail;
+  return core.trim();
 }
 function parseDose(raw){
-  const out={sets:"",reps:"",repType:"reps",repUnit:"",detail:""};
-  if(!raw||!(""+raw).trim()){ out.repType=""; return out; }
+  const out={sets:"",metrics:[],reps:"",weight:"",time:"",timeUnit:"sec",dist:"",distUnit:"m",cal:"",detail:""};
+  if(!raw||!(""+raw).trim())return out;
   let s=(""+raw).trim();
   const sm=s.match(/^(\d+)\s*[×xX]\s*(.*)$/);
-  if(sm){ out.sets=sm[1]; s=sm[2].trim(); }
+  if(sm){out.sets=sm[1];s=sm[2].trim();}
+  let rest=s;
   const vm=s.match(/^(\d+(?:\s*[–\-]\s*\d+)?(?:\.\d+)?)\s*(.*)$/);
   if(vm){
-    out.reps=vm[1].replace(/\s+/g,"");
-    let rest=vm[2].trim();
-    const um=rest.match(/^(mi|km|m|secs?|s|mins?|cal|reps?|pumps)\b\.?/i);
-    if(um){
-      const u=um[1].toLowerCase();
-      if(u==="mi"){out.repType="distance";out.repUnit="mi";}
-      else if(u==="km"){out.repType="distance";out.repUnit="km";}
-      else if(u==="m"){out.repType="distance";out.repUnit="m";}
-      else if(u==="s"||u.indexOf("sec")===0){out.repType="time";out.repUnit="sec";}
-      else if(u.indexOf("min")===0){out.repType="time";out.repUnit="min";}
-      else if(u==="cal"){out.repType="cal";out.repUnit="";}
-      else {out.repType="reps";}
+    const val=vm[1].replace(/\s+/g,""); rest=vm[2].trim();
+    const um=rest.match(/^(mi|km|yd|m|secs?|s|mins?|cal|reps?|pumps)\b\.?/i);
+    if(um){const u=um[1].toLowerCase();
+      if(u==="mi"||u==="km"||u==="yd"||u==="m"){out.metrics.push("distance");out.dist=val;out.distUnit=u;}
+      else if(u==="s"||u.indexOf("sec")===0){out.metrics.push("time");out.time=val;out.timeUnit="sec";}
+      else if(u.indexOf("min")===0){out.metrics.push("time");out.time=val;out.timeUnit="min";}
+      else if(u==="cal"){out.metrics.push("cal");out.cal=val;}
+      else{out.metrics.push("reps");out.reps=val;}
       rest=rest.slice(um[0].length).trim();
-    } else { out.repType="reps"; }
-    out.detail=rest;
-  } else { out.sets="";out.reps="";out.repType="";out.detail=s; }
+    }else{out.metrics.push("reps");out.reps=val;}
+  }
+  const at=rest.indexOf("@");
+  if(at>=0){const after=rest.slice(at+1).trim().replace(/\s*lb\.?$/i,"").trim();const before=rest.slice(0,at).trim();
+    if(after){out.metrics.push("weight");out.weight=after;} rest=before;}
+  out.detail=rest.trim();
+  out.metrics=canonMetrics(out.metrics);
   return out;
 }
-function ensureStructured(e){
-  if(e && e.repType===undefined){
+function ensureMetrics(e){
+  if(e&&!Array.isArray(e.metrics)){
     const p=parseDose(e.dose||"");
-    e.sets=p.sets; e.reps=p.reps; e.repType=p.repType; e.repUnit=p.repUnit; e.detail=p.detail;
+    e.sets=p.sets;e.metrics=p.metrics;e.reps=p.reps;e.weight=p.weight;e.time=p.time;e.timeUnit=p.timeUnit;e.dist=p.dist;e.distUnit=p.distUnit;e.cal=p.cal;e.detail=p.detail;
   }
   return e;
 }
-function doseFieldsHTML(setterCall,e){
-  const mk=f=>setterCall.replace("FIELD",f);
-  const t=e.repType||"";
-  const unitOpts=t==="time"?TIME_UNITS:(t==="distance"?DIST_UNITS:[]);
-  const unitSel=unitOpts.length?`<select class="in" style="max-width:66px" onchange="${mk('repUnit')}">${unitOpts.map(u=>`<option ${e.repUnit===u?"selected":""}>${u}</option>`).join("")}</select>`:"";
-  return `<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-top:6px">
-    <input class="in" style="max-width:54px;text-align:center" value="${esc(e.sets==null?"":e.sets)}" placeholder="sets" onchange="${mk('sets')}">
-    <span class="muted">×</span>
-    <input class="in" style="max-width:78px;text-align:center" value="${esc(e.reps==null?"":e.reps)}" placeholder="reps" onchange="${mk('reps')}">
-    <select class="in" style="max-width:88px" onchange="${mk('repType')}">
-      <option value="reps" ${t==="reps"||t===""?"selected":""}>reps</option>
-      <option value="time" ${t==="time"?"selected":""}>time</option>
-      <option value="distance" ${t==="distance"?"selected":""}>dist</option>
-      <option value="cal" ${t==="cal"?"selected":""}>cal</option>
-    </select>${unitSel}
-    <input class="in" style="min-width:120px;flex:1" value="${esc(e.detail==null?"":e.detail)}" placeholder="extra — e.g. @ 135 lb, / side" onchange="${mk('detail')}"></div>`;
+const MCHIP="display:inline-block;padding:3px 9px;border-radius:13px;font-size:12px;cursor:pointer;font-family:inherit;border:1.5px solid ";
+function metricFieldsHTML(togCall,valCall,e){
+  ensureMetrics(e);
+  const tog=m=>togCall.replace("METRIC","'"+m+"'");
+  const val=f=>valCall.replace("FIELD","'"+f+"'");
+  const chips=METRIC_ORDER.map(m=>`<button type="button" style="${MCHIP}${hasM(e,m)?'#6a4f8f;background:#6a4f8f;color:#fff':'#d8dde3;background:#fff;color:#6b7884'}" onclick="${tog(m)}">${METRIC_LABEL[m]}</button>`).join(" ");
+  const fld=inner=>`<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#6b7884;margin:0 10px 5px 0">${inner}</label>`;
+  let flds="";
+  if(hasM(e,"reps"))flds+=fld(`Reps <input class="in" style="max-width:72px" value="${esc(e.reps||"")}" placeholder="8–10" onchange="${val('reps')}">`);
+  if(hasM(e,"weight"))flds+=fld(`Weight <input class="in" style="max-width:92px" value="${esc(e.weight||"")}" placeholder="135 / heavy" onchange="${val('weight')}">`);
+  if(hasM(e,"time"))flds+=fld(`Time <input class="in" style="max-width:56px" value="${esc(e.time||"")}" placeholder="45" onchange="${val('time')}"><select class="in" style="max-width:62px" onchange="${val('timeUnit')}">${TIME_UNITS.map(u=>`<option ${e.timeUnit===u?'selected':''}>${u}</option>`).join("")}</select>`);
+  if(hasM(e,"distance"))flds+=fld(`Dist <input class="in" style="max-width:56px" value="${esc(e.dist||"")}" placeholder="25" onchange="${val('dist')}"><select class="in" style="max-width:58px" onchange="${val('distUnit')}">${DIST_UNITS.map(u=>`<option ${e.distUnit===u?'selected':''}>${u}</option>`).join("")}</select>`);
+  if(hasM(e,"cal"))flds+=fld(`Cal <input class="in" style="max-width:56px" value="${esc(e.cal||"")}" placeholder="15" onchange="${val('cal')}">`);
+  return `<div style="margin-top:6px;padding:8px;border:1px solid #ece7f2;border-radius:9px;background:#faf9fc">
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="muted" style="font-size:12px">Sets</span><input class="in" style="max-width:46px;text-align:center" value="${esc(e.sets==null?"":e.sets)}" placeholder="3" onchange="${val('sets')}">${chips}</div>
+    ${flds?`<div style="margin-top:8px">${flds}</div>`:`<div class="muted" style="font-size:12px;margin-top:6px">Tap a metric to prescribe it.</div>`}
+    <input class="in" style="margin-top:5px" value="${esc(e.detail||"")}" placeholder="extra note — e.g. / side, tempo, RPE 8" onchange="${val('detail')}"></div>`;
 }
-function applyDoseField(e,f,v){
-  e[f]=v;
-  if(f==="repType"&&(v==="time"||v==="distance")&&!e.repUnit){ e.repUnit=(v==="time"?"sec":"m"); }
-  if(f==="repType"&&(v==="reps"||v==="cal")){ e.repUnit=""; }
+function applyMetricToggle(e,m){
+  ensureMetrics(e);
+  if(hasM(e,m))e.metrics=e.metrics.filter(x=>x!==m);
+  else{e.metrics=canonMetrics(e.metrics.concat(m));if(m==="time"&&!e.timeUnit)e.timeUnit="sec";if(m==="distance"&&!e.distUnit)e.distUnit="m";}
   e.dose=deriveDose(e);
 }
-function setExF(di,bi,ei,f,v){ const e=curDays()[di].blocks[bi].ex[ei]; applyDoseField(e,f,v); if(f==="repType")renderEditor(); }
-function gSetF(i,f,v){ const e=editingGroup.items[i]; applyDoseField(e,f,v); if(f==="repType")renderGroupEditor(); }
-function renderExEditor(di,bi,ei,e){ ensureStructured(e);
+function applyMetricVal(e,f,v){ensureMetrics(e);e[f]=v;e.dose=deriveDose(e);}
+function exMTog(di,bi,ei,m){applyMetricToggle(curDays()[di].blocks[bi].ex[ei],m);renderEditor();}
+function exMVal(di,bi,ei,f,v){applyMetricVal(curDays()[di].blocks[bi].ex[ei],f,v);}
+function gMTog(i,m){applyMetricToggle(editingGroup.items[i],m);renderGroupEditor();}
+function gMVal(i,f,v){applyMetricVal(editingGroup.items[i],f,v);}
+function renderExEditor(di,bi,ei,e){ ensureMetrics(e);
   return `<div class="ex"><div class="reorder"><button title="Move up" onclick="moveEx(${di},${bi},${ei},-1)">▲</button><button title="Move down" onclick="moveEx(${di},${bi},${ei},1)">▼</button></div>
     <div class="grow">
       <input class="in" value="${esc(e.name||"")}" placeholder="Exercise name" onchange="setEx(${di},${bi},${ei},'name',this.value)">
-      ${doseFieldsHTML(`setExF(${di},${bi},${ei},'FIELD',this.value)`,e)}
+      ${metricFieldsHTML(`exMTog(${di},${bi},${ei},METRIC)`,`exMVal(${di},${bi},${ei},FIELD,this.value)`,e)}
       <input class="in" style="margin-top:6px" value="${esc(e.cue||"")}" placeholder="Form cue (shown to athlete)" onchange="setEx(${di},${bi},${ei},'cue',this.value)">
       <input class="in" style="margin-top:6px" value="${esc(e.coachNote||"")}" placeholder="Coach note (your guidance)" onchange="setEx(${di},${bi},${ei},'coachNote',this.value)"></div>
     <div style="display:flex;flex-direction:column;gap:5px"><button class="btn ghost sm" title="Save to library" onclick="exToLibrary(${di},${bi},${ei})">★</button><button class="btn danger sm" onclick="delEx(${di},${bi},${ei})">✕</button></div></div>`;
@@ -634,7 +642,7 @@ function moveDay(di,dir){const a=editing.program.days,j=di+dir;if(j<0||j>=a.leng
 function addBlock(di){const day=curDays()[di];day.rest=false;(day.blocks=day.blocks||[]).push({kind:"strength",tag:"Strength",title:"New block",sub:"",ex:[]});renderEditor();}
 function delBlk(di,bi){curDays()[di].blocks.splice(bi,1);renderEditor();}
 function moveBlk(di,bi,dir){const a=curDays()[di].blocks,j=bi+dir;if(j<0||j>=a.length)return;[a[bi],a[j]]=[a[j],a[bi]];renderEditor();}
-function addBlankEx(di,bi){const day=curDays()[di];day.rest=false;const b=day.blocks[bi];(b.ex=b.ex||[]).push({name:"",dose:"",cue:"",coachNote:"",sets:"",reps:"",repType:"reps",repUnit:"",detail:""});renderEditor();}
+function addBlankEx(di,bi){const day=curDays()[di];day.rest=false;const b=day.blocks[bi];(b.ex=b.ex||[]).push({name:"",dose:"",cue:"",coachNote:"",sets:"",metrics:["reps"],reps:"",weight:"",time:"",timeUnit:"sec",dist:"",distUnit:"m",cal:"",detail:""});renderEditor();}
 function delEx(di,bi,ei){curDays()[di].blocks[bi].ex.splice(ei,1);renderEditor();}
 function moveEx(di,bi,ei,dir){const a=curDays()[di].blocks[bi].ex,j=ei+dir;if(j<0||j>=a.length)return;[a[ei],a[j]]=[a[j],a[ei]];renderEditor();}
 async function exToLibrary(di,bi,ei){
@@ -848,42 +856,33 @@ function renderLibraryScreen(){
 }
 function libAddForm(){libForm(null);}
 function libEditForm(id){libForm(library.find(e=>e.id===id));}
-function unitOptsHTML(t,u){const opts=t==="time"?TIME_UNITS:(t==="distance"?DIST_UNITS:[]);return opts.map(x=>`<option ${u===x?"selected":""}>${x}</option>`).join("");}
-function libTypeChange(){const t=document.getElementById("lfType").value;const un=document.getElementById("lfUnit");if(t==="time"||t==="distance"){un.style.display="";un.innerHTML=unitOptsHTML(t,un.value);}else{un.style.display="none";un.innerHTML="";}}
+let libDraft=null,libEditId=null;
+function libSetField(f,v){libDraft[f]=v;}
+function libMTog(m){applyMetricToggle(libDraft,m);libFormRender();}
+function libMVal(f,v){applyMetricVal(libDraft,f,v);}
 function libForm(e){
-  const ed=e||{name:"",kind:"strength",dose:"",cue:"",note:"",category:""};
-  const pd=parseDose(ed.dose||"");
-  const cats=libCategories();
-  const showUnit=(pd.repType==="time"||pd.repType==="distance");
-  let h=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-h"><h3>${e?"Edit":"New"} exercise</h3><button class="btn ghost sm" onclick="closeModal()">Close</button></div><div class="modal-b">
-    <label class="fld"><span>Name</span><input class="in" id="lfName" value="${esc(ed.name)}"></label>
-    <label class="fld"><span>Kind</span><select class="in" id="lfKind">${KINDS.map(k=>`<option ${ed.kind===k?"selected":""}>${k}</option>`).join("")}</select></label>
-    <label class="fld"><span>Default prescription</span>
-      <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
-        <input class="in" id="lfSets" style="max-width:54px;text-align:center" value="${esc(pd.sets)}" placeholder="sets">
-        <span class="muted">×</span>
-        <input class="in" id="lfReps" style="max-width:78px;text-align:center" value="${esc(pd.reps)}" placeholder="reps">
-        <select class="in" id="lfType" style="max-width:88px" onchange="libTypeChange()">
-          <option value="reps" ${pd.repType==="reps"||pd.repType===""?"selected":""}>reps</option>
-          <option value="time" ${pd.repType==="time"?"selected":""}>time</option>
-          <option value="distance" ${pd.repType==="distance"?"selected":""}>dist</option>
-          <option value="cal" ${pd.repType==="cal"?"selected":""}>cal</option>
-        </select>
-        <select class="in" id="lfUnit" style="max-width:66px;${showUnit?"":"display:none"}">${unitOptsHTML(pd.repType,pd.repUnit)}</select>
-        <input class="in" id="lfDetail" style="min-width:120px;flex:1" value="${esc(pd.detail)}" placeholder="extra — e.g. @ 135 lb, / side">
-      </div></label>
-    <label class="fld"><span>Category (for filtering)</span><input class="in" id="lfCat" list="catlist" value="${esc(ed.category||"")}" placeholder="e.g. crossfit, hyrox, accessory"><datalist id="catlist">${cats.map(c=>`<option value="${esc(c)}">`).join("")}</datalist></label>
-    <label class="fld"><span>Form cue</span><input class="in" id="lfCue" value="${esc(ed.cue||"")}"></label>
-    <label class="fld"><span>Default coach note</span><input class="in" id="lfNote" value="${esc(ed.note||"")}"></label>
-    <div class="row2" style="margin-top:10px"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="libSave(${e?`'${e.id}'`:"null"})">Save</button></div>
+  libEditId=e?e.id:null;
+  libDraft=Object.assign({name:"",kind:"strength",category:"",cue:"",note:"",dose:""},e?JSON.parse(JSON.stringify(e)):{});
+  ensureMetrics(libDraft);
+  libFormRender();
+}
+function libFormRender(){
+  const cats=libCategories();const d=libDraft;
+  let h=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-h"><h3>${libEditId?"Edit":"New"} exercise</h3><button class="btn ghost sm" onclick="closeModal()">Close</button></div><div class="modal-b">
+    <label class="fld"><span>Name</span><input class="in" value="${esc(d.name||"")}" onchange="libSetField('name',this.value)"></label>
+    <label class="fld"><span>Kind</span><select class="in" onchange="libSetField('kind',this.value)">${KINDS.map(k=>`<option ${d.kind===k?"selected":""}>${k}</option>`).join("")}</select></label>
+    <label class="fld"><span>Default prescription</span>${metricFieldsHTML("libMTog(METRIC)","libMVal(FIELD,this.value)",d)}</label>
+    <label class="fld"><span>Category (for filtering)</span><input class="in" list="catlist" value="${esc(d.category||"")}" onchange="libSetField('category',this.value)" placeholder="e.g. crossfit, hyrox"><datalist id="catlist">${cats.map(c=>`<option value="${esc(c)}">`).join("")}</datalist></label>
+    <label class="fld"><span>Form cue</span><input class="in" value="${esc(d.cue||"")}" onchange="libSetField('cue',this.value)"></label>
+    <label class="fld"><span>Default coach note</span><input class="in" value="${esc(d.note||"")}" onchange="libSetField('note',this.value)"></label>
+    <div class="row2" style="margin-top:10px"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="libSave()">Save</button></div>
   </div></div></div>`;document.getElementById("modalRoot").innerHTML=h;
 }
-async function libSave(id){
-  const lt=document.getElementById("lfType").value;
-  const dobj={sets:document.getElementById("lfSets").value.trim(),reps:document.getElementById("lfReps").value.trim(),repType:lt,repUnit:(lt==="time"||lt==="distance")?document.getElementById("lfUnit").value:"",detail:document.getElementById("lfDetail").value.trim()};
-  const rec={name:document.getElementById("lfName").value.trim(),kind:document.getElementById("lfKind").value,dose:deriveDose(dobj)||null,cue:document.getElementById("lfCue").value||null,note:document.getElementById("lfNote").value||null,category:document.getElementById("lfCat").value.trim()||null};
+async function libSave(){
+  const d=libDraft; d.dose=deriveDose(d);
+  const rec={name:(d.name||"").trim(),kind:d.kind,dose:d.dose||null,cue:d.cue||null,note:d.note||null,category:(d.category||"").trim()||null};
   if(!rec.name){toast("Name required",true);return;}
-  try{if(id)await DB.libUpdate(id,rec);else await DB.libCreate(rec);library=await DB.libList();closeModal();renderLibraryScreen();toast("Saved ✓");}
+  try{if(libEditId)await DB.libUpdate(libEditId,rec);else await DB.libCreate(rec);library=await DB.libList();closeModal();renderLibraryScreen();toast("Saved ✓");}
   catch(e){toast(/duplicate|unique/i.test(e.message)?"Name already in library":"Save failed",true);}
 }
 async function libDelete(id){if(!confirm("Remove from library?"))return;try{await DB.libRemove(id);library=library.filter(e=>e.id!==id);renderLibraryScreen();toast("Removed");}catch(e){toast("Delete failed",true);}}
@@ -922,17 +921,17 @@ function renderGroupEditor(){
   document.getElementById("gKind").onchange=e=>editingGroup.kind=e.target.value;
   document.getElementById("gTag").onchange=e=>editingGroup.tag=e.target.value;
 }
-function renderGroupItem(i,e){ ensureStructured(e);
+function renderGroupItem(i,e){ ensureMetrics(e);
   return `<div class="ex"><div class="reorder"><button title="Up" onclick="gMove(${i},-1)">▲</button><button title="Down" onclick="gMove(${i},1)">▼</button></div>
    <div class="grow">
      <input class="in" value="${esc(e.name||"")}" placeholder="Exercise name" onchange="gSet(${i},'name',this.value)">
-     ${doseFieldsHTML(`gSetF(${i},'FIELD',this.value)`,e)}
+     ${metricFieldsHTML(`gMTog(${i},METRIC)`,`gMVal(${i},FIELD,this.value)`,e)}
      <input class="in" style="margin-top:6px" value="${esc(e.cue||"")}" placeholder="Form cue" onchange="gSet(${i},'cue',this.value)">
      <input class="in" style="margin-top:6px" value="${esc(e.coachNote||"")}" placeholder="Coach note" onchange="gSet(${i},'coachNote',this.value)"></div>
    <button class="btn danger sm" onclick="gDel(${i})">✕</button></div>`;
 }
 function gSet(i,f,v){editingGroup.items[i][f]=v;}
-function gAddBlank(){editingGroup.items.push({name:"",dose:"",cue:"",coachNote:"",sets:"",reps:"",repType:"reps",repUnit:"",detail:""});renderGroupEditor();}
+function gAddBlank(){editingGroup.items.push({name:"",dose:"",cue:"",coachNote:"",sets:"",metrics:["reps"],reps:"",weight:"",time:"",timeUnit:"sec",dist:"",distUnit:"m",cal:"",detail:""});renderGroupEditor();}
 function gDel(i){editingGroup.items.splice(i,1);renderGroupEditor();}
 function gMove(i,dir){const a=editingGroup.items,j=i+dir;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];renderGroupEditor();}
 async function gAddFromLib(){if(!library.length){try{library=await DB.libList();}catch(e){}}gPickKind="";renderGroupPicker("","");}

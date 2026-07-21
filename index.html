@@ -12,7 +12,7 @@
 <style>
   :root{
     --paper:#f7f3ea;--card:#fffdf9;--ink:#22303c;--muted:#6b7884;--line:#e3dccd;
-    --navy:#16324f;--strength:#3b6ea5;--cardio:#2f8f86;--accessory:#6a9a5b;--core:#c2754e;--bone:#6a72b8;--extra:#8a6fb0;
+    --navy:#16324f;--strength:#3b6ea5;--cardio:#2f8f86;--accessory:#6a9a5b;--core:#c2754e;--mobility:#7b6aa8;--bone:#6a72b8;--extra:#8a6fb0;
     --warn:#b06a2c;--warnbg:#fbeede;--ok:#2f8f86;
     --shadow:0 1px 3px rgba(40,50,60,.06),0 6px 20px rgba(40,50,60,.06);
   }
@@ -58,6 +58,7 @@
   .block-head .sub{font-size:15px;color:var(--muted);margin-top:2px;}
   .block.cardio .block-head{border-color:var(--cardio);}.block.cardio .tag{color:var(--cardio);}
   .block.accessory .block-head{border-color:var(--accessory);}.block.accessory .tag{color:var(--accessory);}
+  .block.mobility .block-head{border-color:var(--mobility);}.block.mobility .tag{color:var(--mobility);}
   .block.core .block-head{border-color:var(--core);}.block.core .tag{color:var(--core);}
   .block.extra .block-head{border-color:var(--extra);}.block.extra .tag{color:var(--extra);}
   .bnote{margin:0 15px 11px;font-size:15.5px;border-radius:10px;padding:9px 11px;background:#eef0fb;color:#3f4674;}
@@ -200,48 +201,59 @@ function toast(msg,err){const t=document.getElementById("toast");t.textContent=m
 function defaultSetCount(dose){const m=(dose||"").match(/(\d+)\s*[×x]/);return m?Math.min(parseInt(m[1]),6):1;}
 function exKey(bi,ei){return bi+"-"+ei;}
 function exStyle(block,e){if((block.kind||"")==="cardio")return"cardio";return"typed";}
-/* ---- structured type model (shared with coach editor) ---- */
+/* ---- multi-metric model (shared with coach editor) ---- */
 const TIME_UNITS=["sec","min"];
+const METRIC_ORDER=["reps","weight","time","distance","cal"];
+const METRIC_FIELD={reps:"reps",weight:"weight",time:"time",distance:"dist",cal:"cal"};
+function canonMetrics(a){return METRIC_ORDER.filter(m=>Array.isArray(a)&&a.includes(m));}
+function hasM(e,m){return Array.isArray(e.metrics)&&e.metrics.includes(m);}
+function ne(v){return v!=null&&(""+v).trim()!=="";}
+function numOrNull(v){return (v===""||v==null)?null:(isNaN(parseFloat(v))?null:parseFloat(v));}
+function deriveDose(e){
+  const q=[];
+  if(hasM(e,"reps")&&ne(e.reps))q.push((""+e.reps).trim());
+  if(hasM(e,"time")&&ne(e.time))q.push((""+e.time).trim()+" "+(e.timeUnit||"sec"));
+  if(hasM(e,"distance")&&ne(e.dist))q.push((""+e.dist).trim()+" "+(e.distUnit||"m"));
+  if(hasM(e,"cal")&&ne(e.cal))q.push((""+e.cal).trim()+" cal");
+  let core=q.join(" / ");
+  const sets=(e.sets==null?"":(""+e.sets)).trim();
+  if(sets&&core)core=sets+" × "+core; else if(sets&&!core)core=sets+" ×";
+  if(hasM(e,"weight")&&ne(e.weight)){const w=(""+e.weight).trim();core=(core?core+" ":"")+"@ "+w+(/\d$/.test(w)?" lb":"");}
+  const detail=(e.detail==null?"":(""+e.detail)).trim();
+  if(detail)core=(core?core+" ":"")+detail;
+  return core.trim();
+}
 function parseDose(raw){
-  const out={sets:"",reps:"",repType:"reps",repUnit:"",detail:""};
-  if(!raw||!(""+raw).trim()){out.repType="";return out;}
+  const out={sets:"",metrics:[],reps:"",weight:"",time:"",timeUnit:"sec",dist:"",distUnit:"m",cal:"",detail:""};
+  if(!raw||!(""+raw).trim())return out;
   let s=(""+raw).trim();
   const sm=s.match(/^(\d+)\s*[×xX]\s*(.*)$/);
   if(sm){out.sets=sm[1];s=sm[2].trim();}
+  let rest=s;
   const vm=s.match(/^(\d+(?:\s*[–\-]\s*\d+)?(?:\.\d+)?)\s*(.*)$/);
-  if(vm){
-    out.reps=vm[1].replace(/\s+/g,"");
-    let rest=vm[2].trim();
+  if(vm){const val=vm[1].replace(/\s+/g,"");rest=vm[2].trim();
     const um=rest.match(/^(mi|km|yd|m|secs?|s|mins?|cal|reps?|pumps)\b\.?/i);
     if(um){const u=um[1].toLowerCase();
-      if(u==="mi"){out.repType="distance";out.repUnit="mi";}
-      else if(u==="km"){out.repType="distance";out.repUnit="km";}
-      else if(u==="yd"){out.repType="distance";out.repUnit="yd";}
-      else if(u==="m"){out.repType="distance";out.repUnit="m";}
-      else if(u==="s"||u.indexOf("sec")===0){out.repType="time";out.repUnit="sec";}
-      else if(u.indexOf("min")===0){out.repType="time";out.repUnit="min";}
-      else if(u==="cal"){out.repType="cal";out.repUnit="";}
-      else{out.repType="reps";}
+      if(u==="mi"||u==="km"||u==="yd"||u==="m"){out.metrics.push("distance");out.dist=val;out.distUnit=u;}
+      else if(u==="s"||u.indexOf("sec")===0){out.metrics.push("time");out.time=val;out.timeUnit="sec";}
+      else if(u.indexOf("min")===0){out.metrics.push("time");out.time=val;out.timeUnit="min";}
+      else if(u==="cal"){out.metrics.push("cal");out.cal=val;}
+      else{out.metrics.push("reps");out.reps=val;}
       rest=rest.slice(um[0].length).trim();
-    }else{out.repType="reps";}
-    out.detail=rest;
-  }else{out.sets="";out.reps="";out.repType="";out.detail=s;}
+    }else{out.metrics.push("reps");out.reps=val;}
+  }
+  const at=rest.indexOf("@");
+  if(at>=0){const after=rest.slice(at+1).trim().replace(/\s*lb\.?$/i,"").trim();const before=rest.slice(0,at).trim();
+    if(after){out.metrics.push("weight");out.weight=after;}rest=before;}
+  out.detail=rest.trim();out.metrics=canonMetrics(out.metrics);
   return out;
 }
-/* effective type of a program exercise: reps | time | distance | cal */
-function exType(e){
-  if(e&&e.repType){return e.repType==="cal"?"cal":e.repType;}
-  const p=parseDose((e&&e.dose)||"");
-  return p.repType||"reps";
+function ensureMetrics(e){
+  if(e&&!Array.isArray(e.metrics)){const p=parseDose(e.dose||"");e.sets=p.sets;e.metrics=p.metrics;e.reps=p.reps;e.weight=p.weight;e.time=p.time;e.timeUnit=p.timeUnit;e.dist=p.dist;e.distUnit=p.distUnit;e.cal=p.cal;e.detail=p.detail;}
+  return e;
 }
-function exUnit(e){ if(e&&e.repUnit)return e.repUnit; const p=parseDose((e&&e.dose)||""); return p.repUnit||""; }
-function numOrNull(v){return (v===""||v==null)?null:(isNaN(parseFloat(v))?null:parseFloat(v));}
-function valLabel(type){return type==="time"?"Time":type==="distance"?"Distance":type==="cal"?"Calories":"Reps";}
-function typeUnitOptions(type,cur){
-  const opts=type==="time"?TIME_UNITS:(type==="distance"?DIST_UNITS:[]);
-  if(!opts.length)return"";
-  return `<select class="unitsel">${opts.map(u=>`<option value="${u}" ${cur===u?"selected":""}>${u}</option>`).join("")}</select>`;
-}
+function mUnit(src,m){return m==="time"?(src.timeUnit||"sec"):(m==="distance"?(src.distUnit||"mi"):"");}
+function mHeader(src,m){const u=mUnit(src,m);const base=m==="reps"?"Reps":m==="weight"?"Weight (lb)":m==="time"?"Time":m==="distance"?"Distance":"Calories";return base+(u?` (${u})`:"");}
 function programForDow(dow){return (program.days||[]).find(d=>d.dow===dow);}
 function dayForDate(date){
   const ov=(athlete&&athlete.overrides)?athlete.overrides[date]:null;
@@ -259,24 +271,26 @@ function lastSessionFor(name,beforeDate){
   return {date:d,rows:sess};
 }
 function rowVal(r){
-  if(r.reps!=null)return ""+r.reps;
-  if(r.duration_sec!=null)return r.duration_sec+" sec";
-  if(r.duration_min!=null)return r.duration_min+" min";
-  if(r.distance!=null)return r.distance+" "+(r.distance_unit||"");
-  if(r.calories!=null)return r.calories+" cal";
-  return "–";
+  const p=[];
+  if(r.reps!=null)p.push(""+r.reps);
+  if(r.duration_sec!=null)p.push(r.duration_sec+" sec");
+  if(r.duration_min!=null)p.push(r.duration_min+" min");
+  if(r.distance!=null)p.push(r.distance+" "+(r.distance_unit||""));
+  if(r.calories!=null)p.push(r.calories+" cal");
+  return p.join(" · ")||"–";
 }
 function summarizeRows(rows){
   if(!rows||!rows.length)return"";
   const r0=rows[0];
-  const isRep = r0.reps!=null || (r0.duration_min==null&&r0.duration_sec==null&&r0.distance==null&&r0.calories==null);
-  if(!isRep && rows.length===1){
+  const nonRep = r0.duration_min!=null||r0.duration_sec!=null||r0.distance!=null||r0.calories!=null;
+  if(nonRep && rows.length===1){
     let s=rowVal(r0); if(r0.weight!=null)s+=" @ "+r0.weight+" lb"; if(r0.rpe!=null)s+=" · RPE "+r0.rpe; return s;
   }
   const vals=rows.map(rowVal);
+  const repsOnly=rows.every(r=>r.reps!=null&&r.distance==null&&r.calories==null&&r.duration_sec==null&&r.duration_min==null);
   const wts=[...new Set(rows.map(r=>r.weight).filter(w=>w!=null))];
   const w=wts.length===1?` @ ${wts[0]} lb`:(wts.length>1?` @ ${Math.min(...wts)}–${Math.max(...wts)} lb`:"");
-  return `${rows.length} set${rows.length>1?"s":""} · ${vals.join(", ")}${isRep?" reps":""}${w}`;
+  return `${rows.length} set${rows.length>1?"s":""} · ${vals.join(", ")}${repsOnly?" reps":""}${w}`;
 }
 function fmtLast(name){
   const s=lastSessionFor(name,selDate);if(!s)return"";
@@ -361,18 +375,19 @@ function render(){
 
 /* ---------------- logged (past) day ---------------- */
 function loggedRow(l){
-  const isSet = l.reps!=null || (l.duration_min==null&&l.duration_sec==null&&l.distance==null&&l.calories==null&&l.rpe==null);
   const fld=(lab,f,val,extra="")=>`<label style="font-size:12px;color:#6b7884">${lab} <input data-h="${f}" value="${esc(val==null?"":val)}" ${extra}></label>`;
-  let h=`<div class="hist-row" data-id="${l.id}"><span class="hx">${esc(l.exercise_name)}${isSet?` <span style="color:#6b7884;font-weight:400">· set ${l.set_number}</span>`:""}</span>`;
-  if(isSet){ h+=fld("reps","reps",l.reps)+fld("lb","weight",l.weight); }
-  else {
-    if(l.duration_min!=null)h+=fld("min","duration_min",l.duration_min);
-    if(l.duration_sec!=null)h+=fld("sec","duration_sec",l.duration_sec);
-    if(l.distance!=null){h+=fld("dist","distance",l.distance,'style="width:52px"');const uopts=DIST_UNITS.map(u=>`<option value="${u}" ${(l.distance_unit||"mi")===u?"selected":""}>${u}</option>`).join("");h+=`<select data-h="distance_unit" style="font-size:12px">${uopts}</select>`;}
-    if(l.calories!=null)h+=fld("cal","calories",l.calories);
-    if(l.weight!=null)h+=fld("lb","weight",l.weight);
-    if(l.rpe!=null)h+=fld("RPE","rpe",l.rpe);
-  }
+  const parts=[];
+  if(l.reps!=null)parts.push(fld("reps","reps",l.reps));
+  if(l.weight!=null)parts.push(fld("lb","weight",l.weight));
+  if(l.duration_sec!=null)parts.push(fld("sec","duration_sec",l.duration_sec));
+  if(l.duration_min!=null)parts.push(fld("min","duration_min",l.duration_min));
+  if(l.distance!=null){parts.push(fld("dist","distance",l.distance,'style="width:52px"'));const uopts=DIST_UNITS.map(u=>`<option value="${u}" ${(l.distance_unit||"mi")===u?"selected":""}>${u}</option>`).join("");parts.push(`<select data-h="distance_unit" style="font-size:12px">${uopts}</select>`);}
+  if(l.calories!=null)parts.push(fld("cal","calories",l.calories));
+  if(l.rpe!=null)parts.push(fld("RPE","rpe",l.rpe));
+  if(!parts.length)parts.push(fld("reps","reps",l.reps),fld("lb","weight",l.weight));
+  const showSet=(l.set_number!=null)&&(l.reps!=null||l.weight!=null||l.distance!=null||l.calories!=null||l.duration_sec!=null);
+  let h=`<div class="hist-row" data-id="${l.id}"><span class="hx">${esc(l.exercise_name)}${showSet?` <span style="color:#6b7884;font-weight:400">· set ${l.set_number}</span>`:""}</span>`;
+  h+=parts.join("");
   h+=`<button class="del" data-del="${l.id}">🗑</button>${l.note?`<div class="hnote">📝 ${esc(l.note)}</div>`:""}</div>`;
   return h;
 }
@@ -390,17 +405,20 @@ function renderLoggedDay(day,dateLogs){
 
 /* ---------------- exercise (program-logging) ---------------- */
 function renderExercise(block,bi,e,ei,dateLogs){
+  ensureMetrics(e);
   const key=exKey(bi,ei);
   const sd=sessionData[key]||(sessionData[key]={sets:[],note:"",done:false,activity:"",duration:"",rpe:""});
   const last=lastSessionFor(e.name,selDate);
   let style=exStyle(block,e);
-  if(style==="typed" && !(e.dose&&(""+e.dose).trim())) style="done";
-  const type=(style==="typed")?exType(e):null;
+  const prog=(e.metrics&&e.metrics.length)?e.metrics.slice():[];
+  if(style==="typed" && !prog.length && !(e.dose&&(""+e.dose).trim())) style="done";
   if(style==="typed"){
-    if(sd.unit==null)sd.unit=exUnit(e)||(type==="distance"?guessUnit(e.name):(type==="time"?"sec":""));
+    if(!sd.metrics)sd.metrics=prog.length?prog.slice():["reps"];
+    if(sd.timeUnit==null)sd.timeUnit=e.timeUnit||"sec";
+    if(sd.distUnit==null)sd.distUnit=e.distUnit||guessUnit(e.name);
     if(sd.sets.length===0 && !sd._init){
-      const n=defaultSetCount(e.dose);const lw=(type==="reps"&&last&&last.rows[0]&&last.rows[0].weight!=null)?last.rows[0].weight:"";
-      for(let i=0;i<n;i++)sd.sets.push({reps:"",weight:lw});
+      const n=defaultSetCount(e.dose);const lw=(sd.metrics.includes("weight")&&last&&last.rows[0]&&last.rows[0].weight!=null)?last.rows[0].weight:"";
+      for(let i=0;i<n;i++)sd.sets.push({reps:"",weight:lw,time:"",dist:"",cal:""});
       sd._init=true;
     }
   }
@@ -414,19 +432,24 @@ function renderExercise(block,bi,e,ei,dateLogs){
   if(e.coachNote)h+=`<div class="ex-coachnote"><b>Coach:</b> ${esc(e.coachNote)}</div>`;
   const lt=fmtLast(e.name);if(lt)h+=`<div class="lastval">⟲ ${esc(lt)}</div>`;
   if(already.length){h+=`<div class="logged-badge">✓ Logged this day: ${esc(summarizeRows(already))} — re-saving replaces it</div>`;}
-  if(style==="typed"){
-    const hasUnit=(type==="time"||type==="distance");
-    const vhdr=valLabel(type)+(hasUnit?` <span style="font-weight:400;color:#6b7884">(${esc(sd.unit)})</span>`:"");
-    h+=`<div class="sets"><table><thead><tr><th></th><th>${vhdr}</th><th>Weight (lb)</th><th></th></tr></thead><tbody data-sets="${key}">`;
-    sd.sets.forEach((s,si)=>{h+=setRow(key,si,s);});
-    h+=`</tbody></table><div class="setbtns"><button class="mini" data-addset="${key}">+ Add set</button>`;
-    if(hasUnit){const opts=(type==="time"?TIME_UNITS:DIST_UNITS).map(u=>`<option value="${u}" ${sd.unit===u?"selected":""}>${u}</option>`).join("");h+=`<span style="margin-left:10px;font-size:12px;color:#6b7884">unit <select data-unit="${key}">${opts}</select></span>`;}
-    h+=`</div></div>`;
-  }else if(style==="cardio"){
-    h+=renderCardioFields(key,sd,e);
-  }
+  if(style==="typed"){ h+=metricTable(key,sd); }
+  else if(style==="cardio"){ h+=renderCardioFields(key,sd,e); }
   h+=`<textarea class="exnote" data-note="${key}" placeholder="Note (how it felt, any tweak)…">${esc(sd.note)}</textarea>`;
   h+=`</div></div></div>`;return h;
+}
+const METRIC_LABEL={reps:"Reps",weight:"Weight",time:"Time",distance:"Distance",cal:"Calories"};
+function metricTable(key,sd){
+  const cols=(sd.metrics&&sd.metrics.length)?sd.metrics:["reps"];
+  const heads=cols.map(m=>`<th>${esc(mHeader(sd,m))}</th>`).join("");
+  let h=`<div class="sets"><table><thead><tr><th></th>${heads}<th></th></tr></thead><tbody data-sets="${key}">`;
+  sd.sets.forEach((s,si)=>{h+=setRow(key,si,s,cols);});
+  h+=`</tbody></table><div class="setbtns" style="flex-wrap:wrap;gap:8px"><button class="mini" data-addset="${key}">+ Add set</button>`;
+  if(cols.includes("time"))h+=`<span style="font-size:12px;color:#6b7884">time <select data-tu="${key}">${TIME_UNITS.map(u=>`<option ${sd.timeUnit===u?"selected":""}>${u}</option>`).join("")}</select></span>`;
+  if(cols.includes("distance"))h+=`<span style="font-size:12px;color:#6b7884">dist <select data-du="${key}">${DIST_UNITS.map(u=>`<option ${sd.distUnit===u?"selected":""}>${u}</option>`).join("")}</select></span>`;
+  const avail=METRIC_ORDER.filter(m=>!cols.includes(m));
+  if(avail.length)h+=`<select data-addmetric="${key}"><option value="">+ metric</option>${avail.map(m=>`<option value="${m}">${METRIC_LABEL[m]}</option>`).join("")}</select>`;
+  h+=`</div></div>`;
+  return h;
 }
 const DIST_UNITS=["mi","km","m","yd"];
 function guessUnit(name){return /swim/i.test(name||"")?"m":"mi";}
@@ -441,38 +464,29 @@ function renderCardioFields(key,sd,e){
     <div class="row2"><label>Distance<input data-cf="distance" data-k="${key}" inputmode="decimal" value="${esc(sd.distance||"")}" placeholder="optional"></label>
     <label>Unit<select data-cf="dunit" data-k="${key}">${uopts}</select></label></div></div>`;
 }
-function setRow(key,si,s){
-  return `<tr data-row="${si}"><td>${si+1}</td>
-    <td><input inputmode="numeric" data-f="reps" data-k="${key}" data-i="${si}" value="${esc(s.reps)}" placeholder="–"></td>
-    <td><input inputmode="decimal" data-f="weight" data-k="${key}" data-i="${si}" value="${esc(s.weight)}" placeholder="–"></td>
-    <td><button class="rm" data-rmset="${key}" data-i="${si}">×</button></td></tr>`;
+function setRow(key,si,s,cols){
+  cols=cols||["reps"];
+  const cell=m=>{const f=METRIC_FIELD[m];const mode=(m==="weight"||m==="distance")?"decimal":"numeric";return `<td><input inputmode="${mode}" data-f="${f}" data-k="${key}" data-i="${si}" value="${esc(s[f]==null?"":s[f])}" placeholder="–"></td>`;};
+  return `<tr data-row="${si}"><td>${si+1}</td>${cols.map(cell).join("")}<td><button class="rm" data-rmset="${key}" data-i="${si}">×</button></td></tr>`;
 }
 function bindExercises(){
   document.querySelectorAll("[data-done]").forEach(el=>el.onclick=()=>{const k=el.getAttribute("data-done");sessionData[k].done=!sessionData[k].done;el.closest(".exwrap").classList.toggle("done",sessionData[k].done);updateSaveCount();});
   document.querySelectorAll("input[data-f]").forEach(inp=>inp.oninput=()=>{const k=inp.dataset.k;sessionData[k].sets[+inp.dataset.i][inp.dataset.f]=inp.value;sessionData[k].touched=true;updateSaveCount();});
   document.querySelectorAll("[data-cf]").forEach(inp=>inp.oninput=inp.onchange=()=>{const k=inp.dataset.k;sessionData[k][inp.dataset.cf]=inp.value;sessionData[k].touched=true;updateSaveCount();});
   document.querySelectorAll("textarea[data-note]").forEach(t=>t.oninput=()=>{sessionData[t.dataset.note].note=t.value;updateSaveCount();});
-  document.querySelectorAll("[data-addset]").forEach(b=>b.onclick=()=>{const k=b.getAttribute("data-addset");const sets=sessionData[k].sets;const ls=sets[sets.length-1]||{reps:"",weight:""};sets.push({reps:ls.reps,weight:ls.weight});sessionData[k].touched=true;redrawSets(k);updateSaveCount();});
+  document.querySelectorAll("[data-addset]").forEach(b=>b.onclick=()=>{const k=b.getAttribute("data-addset");const sets=sessionData[k].sets;const ls=sets[sets.length-1]||{};sets.push({reps:ls.reps||"",weight:ls.weight||"",time:ls.time||"",dist:ls.dist||"",cal:ls.cal||""});sessionData[k].touched=true;redrawSets(k);updateSaveCount();});
   document.querySelectorAll("[data-rmset]").forEach(b=>b.onclick=()=>{const k=b.getAttribute("data-rmset");if(sessionData[k].sets.length<=1)return;sessionData[k].sets.splice(+b.dataset.i,1);redrawSets(k);updateSaveCount();});
-  document.querySelectorAll("[data-unit]").forEach(sel=>sel.onchange=()=>{const k=sel.getAttribute("data-unit");sessionData[k].unit=sel.value;sessionData[k].touched=true;render();});
+  document.querySelectorAll("[data-tu]").forEach(sel=>sel.onchange=()=>{const k=sel.getAttribute("data-tu");sessionData[k].timeUnit=sel.value;sessionData[k].touched=true;render();});
+  document.querySelectorAll("[data-du]").forEach(sel=>sel.onchange=()=>{const k=sel.getAttribute("data-du");sessionData[k].distUnit=sel.value;sessionData[k].touched=true;render();});
+  document.querySelectorAll("[data-addmetric]").forEach(sel=>sel.onchange=()=>{const k=sel.getAttribute("data-addmetric");if(!sel.value)return;const sd=sessionData[k];sd.metrics=canonMetrics((sd.metrics||[]).concat(sel.value));if(sel.value==="distance"&&sd.distUnit==null)sd.distUnit=guessUnit("");if(sel.value==="time"&&sd.timeUnit==null)sd.timeUnit="sec";sd.touched=true;render();});
 }
 function rebindSetControls(k){
   document.querySelectorAll(`input[data-k="${k}"][data-f]`).forEach(inp=>inp.oninput=()=>{sessionData[k].sets[+inp.dataset.i][inp.dataset.f]=inp.value;sessionData[k].touched=true;updateSaveCount();});
   document.querySelectorAll(`[data-rmset="${k}"]`).forEach(b=>b.onclick=()=>{if(sessionData[k].sets.length<=1)return;sessionData[k].sets.splice(+b.dataset.i,1);redrawSets(k);updateSaveCount();});
 }
-function redrawSets(k){const tb=document.querySelector(`[data-sets="${k}"]`);if(!tb)return;tb.innerHTML=sessionData[k].sets.map((s,si)=>setRow(k,si,s)).join("");rebindSetControls(k);}
+function redrawSets(k){const tb=document.querySelector(`[data-sets="${k}"]`);if(!tb)return;const cols=(sessionData[k].metrics&&sessionData[k].metrics.length)?sessionData[k].metrics:["reps"];tb.innerHTML=sessionData[k].sets.map((s,si)=>setRow(k,si,s,cols)).join("");rebindSetControls(k);}
 
 /* ---------------- athlete-built workouts ---------------- */
-function deriveDose(e){
-  const sets=(e.sets==null?"":(""+e.sets)).trim();
-  const reps=(e.reps==null?"":(""+e.reps)).trim();
-  const t=e.repType||"",unit=e.repUnit||"";
-  const detail=(e.detail==null?"":(""+e.detail)).trim();
-  let core="";
-  if(reps){const ul=(t==="distance"||t==="time")?unit:(t==="cal"?"cal":"");const val=reps+(ul?(" "+ul):"");core=(sets!=="")?(sets+" × "+val):val;}
-  else if(sets!=="")core=sets+" ×";
-  let out=core; if(detail)out=out?(out+" "+detail):detail; return out.trim();
-}
 const WIN='font-family:inherit;font-size:15px;border:1.5px solid #d8dde3;border-radius:8px;padding:8px;background:#fff;color:inherit';
 function newWorkoutId(){return "w"+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36);}
 function openWorkouts(){editingWorkout=null;mode="workouts";render();}
@@ -495,23 +509,30 @@ function renderWorkouts(){
   });
   app.innerHTML=html;
 }
-function newWorkout(){editingWorkout={id:newWorkoutId(),name:"",items:[{name:"",sets:"",reps:"",repType:"reps",repUnit:"",detail:"",cue:""}]};render();}
-function editWorkout(id){const w=workouts.find(x=>x.id===id);editingWorkout=w?JSON.parse(JSON.stringify(w)):null;if(editingWorkout&&!editingWorkout.items.length)editingWorkout.items=[{name:"",sets:"",reps:"",repType:"reps",repUnit:"",detail:"",cue:""}];render();}
+function wBlank(){return {name:"",sets:"",metrics:["reps"],reps:"",weight:"",time:"",timeUnit:"sec",dist:"",distUnit:"m",cal:"",detail:"",cue:""};}
+function newWorkout(){editingWorkout={id:newWorkoutId(),name:"",items:[wBlank()]};render();}
+function editWorkout(id){const w=workouts.find(x=>x.id===id);editingWorkout=w?JSON.parse(JSON.stringify(w)):null;if(editingWorkout){(editingWorkout.items||[]).forEach(ensureMetrics);if(!editingWorkout.items.length)editingWorkout.items=[wBlank()];}render();}
 async function delWorkout(id){if(!confirm("Delete this workout?"))return;workouts=workouts.filter(w=>w.id!==id);try{await DB.updateAthlete(athlete.id,{workouts});athlete.workouts=workouts;toast("Deleted");}catch(e){toast("Delete failed",true);}render();}
+const MCHIP_W="display:inline-block;padding:3px 8px;border-radius:12px;font-size:12px;cursor:pointer;font-family:inherit;border:1.5px solid ";
 function wItemFields(ii,it){
+  ensureMetrics(it);
   const mk=f=>`wSetField(${ii},'${f}',this.value)`;
-  const t=it.repType||"reps";
-  const unitOpts=t==="time"?TIME_UNITS:(t==="distance"?DIST_UNITS:[]);
-  const unitSel=unitOpts.length?`<select style="${WIN}" onchange="${mk('repUnit')}">${unitOpts.map(u=>`<option ${it.repUnit===u?"selected":""}>${u}</option>`).join("")}</select>`:"";
+  const chips=METRIC_ORDER.map(m=>`<button type="button" onclick="wMTog(${ii},'${m}')" style="${MCHIP_W}${hasM(it,m)?'#6a4f8f;background:#6a4f8f;color:#fff':'#d8dde3;background:#fff;color:#6b7884'}">${METRIC_LABEL[m]}</button>`).join(" ");
+  const fld=inner=>`<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#6b7884;margin:0 8px 5px 0">${inner}</label>`;
+  let flds="";
+  if(hasM(it,"reps"))flds+=fld(`Reps <input style="${WIN};width:64px" value="${esc(it.reps||"")}" onchange="${mk('reps')}">`);
+  if(hasM(it,"weight"))flds+=fld(`Weight <input style="${WIN};width:82px" value="${esc(it.weight||"")}" onchange="${mk('weight')}">`);
+  if(hasM(it,"time"))flds+=fld(`Time <input style="${WIN};width:48px" value="${esc(it.time||"")}" onchange="${mk('time')}"><select style="${WIN}" onchange="${mk('timeUnit')}">${TIME_UNITS.map(u=>`<option ${it.timeUnit===u?'selected':''}>${u}</option>`).join("")}</select>`);
+  if(hasM(it,"distance"))flds+=fld(`Dist <input style="${WIN};width:48px" value="${esc(it.dist||"")}" onchange="${mk('dist')}"><select style="${WIN}" onchange="${mk('distUnit')}">${DIST_UNITS.map(u=>`<option ${it.distUnit===u?'selected':''}>${u}</option>`).join("")}</select>`);
+  if(hasM(it,"cal"))flds+=fld(`Cal <input style="${WIN};width:48px" value="${esc(it.cal||"")}" onchange="${mk('cal')}">`);
   return `<div class="exwrap" style="display:block"><input style="${WIN};width:100%;font-weight:600" value="${esc(it.name||"")}" placeholder="Exercise name" onchange="wSetField(${ii},'name',this.value)">
-    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:7px">
-      <input style="${WIN};width:52px;text-align:center" value="${esc(it.sets==null?"":it.sets)}" placeholder="sets" onchange="${mk('sets')}"><span>×</span>
-      <input style="${WIN};width:74px;text-align:center" value="${esc(it.reps==null?"":it.reps)}" placeholder="reps" onchange="${mk('reps')}">
-      <select style="${WIN}" onchange="${mk('repType')}"><option value="reps" ${t==="reps"?"selected":""}>reps</option><option value="time" ${t==="time"?"selected":""}>time</option><option value="distance" ${t==="distance"?"selected":""}>dist</option><option value="cal" ${t==="cal"?"selected":""}>cal</option></select>${unitSel}
-      <input style="${WIN};flex:1;min-width:90px" value="${esc(it.detail==null?"":it.detail)}" placeholder="extra — e.g. @ 135 lb" onchange="${mk('detail')}"></div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:7px"><span style="font-size:12px;color:#6b7884">Sets</span><input style="${WIN};width:46px;text-align:center" value="${esc(it.sets==null?"":it.sets)}" onchange="${mk('sets')}">${chips}</div>
+    ${flds?`<div style="margin-top:7px">${flds}</div>`:``}
+    <input style="${WIN};width:100%;margin-top:7px" value="${esc(it.detail==null?"":it.detail)}" placeholder="extra — e.g. / side, tempo" onchange="${mk('detail')}">
     <input style="${WIN};width:100%;margin-top:7px" value="${esc(it.cue||"")}" placeholder="Cue / note (optional)" onchange="wSetField(${ii},'cue',this.value)">
     <div style="margin-top:7px"><button class="mini" style="color:#b06a6a" onclick="wDelItem(${ii})">Remove</button></div></div>`;
 }
+function wMTog(ii,m){const n=document.getElementById("wName");if(n)editingWorkout.name=n.value;const it=editingWorkout.items[ii];ensureMetrics(it);it.metrics=it.metrics.includes(m)?it.metrics.filter(x=>x!==m):canonMetrics(it.metrics.concat(m));if(m==="time"&&!it.timeUnit)it.timeUnit="sec";if(m==="distance"&&!it.distUnit)it.distUnit="m";it.dose=deriveDose(it);render();}
 function renderWorkoutEditor(){
   const w=editingWorkout;
   let h=`<div class="day-head"><h2>${w&&workouts.find(x=>x.id===w.id)?"Edit workout":"New workout"}</h2></div>`;
@@ -525,9 +546,9 @@ function renderWorkoutEditor(){
   return h;
 }
 function bindWorkoutEditor(){const n=document.getElementById("wName");if(n)n.onchange=()=>{editingWorkout.name=n.value;};}
-function wSetField(ii,f,v){const it=editingWorkout.items[ii];it[f]=v;if(f==="repType"){if((v==="time"||v==="distance")&&!it.repUnit)it.repUnit=(v==="time"?"sec":"m");if(v==="reps"||v==="cal")it.repUnit="";}it.dose=deriveDose(it);if(f==="repType")render();}
-function wAddItem(){const n=document.getElementById("wName");if(n)editingWorkout.name=n.value;editingWorkout.items.push({name:"",sets:"",reps:"",repType:"reps",repUnit:"",detail:"",cue:""});render();}
-function wDelItem(ii){const n=document.getElementById("wName");if(n)editingWorkout.name=n.value;editingWorkout.items.splice(ii,1);if(!editingWorkout.items.length)editingWorkout.items.push({name:"",sets:"",reps:"",repType:"reps",repUnit:"",detail:"",cue:""});render();}
+function wSetField(ii,f,v){const it=editingWorkout.items[ii];it[f]=v;it.dose=deriveDose(it);}
+function wAddItem(){const n=document.getElementById("wName");if(n)editingWorkout.name=n.value;editingWorkout.items.push(wBlank());render();}
+function wDelItem(ii){const n=document.getElementById("wName");if(n)editingWorkout.name=n.value;editingWorkout.items.splice(ii,1);if(!editingWorkout.items.length)editingWorkout.items.push(wBlank());render();}
 async function saveWorkoutDef(){
   const n=document.getElementById("wName");if(n)editingWorkout.name=n.value;
   if(!editingWorkout.name||!editingWorkout.name.trim()){toast("Give the workout a name",true);return;}
@@ -541,9 +562,8 @@ async function saveWorkoutDef(){
 }
 function applyWorkoutToDay(id){
   const w=workouts.find(x=>x.id===id);if(!w)return;
-  (w.items||[]).forEach(it=>{
-    const t=it.repType||"reps";const n=Math.max(1,Math.min(parseInt(it.sets)||1,10));
-    extras.push({name:it.name,type:t==="cal"?"cal":t,unit:it.repUnit||"",sets:Array.from({length:n},()=>({reps:"",weight:""})),duration:"",rpe:"",note:"",target:it.dose||""});
+  (w.items||[]).forEach(it=>{ensureMetrics(it);const n=Math.max(1,Math.min(parseInt(it.sets)||1,10));
+    extras.push({name:it.name,metrics:(it.metrics&&it.metrics.length?it.metrics.slice():["reps"]),timeUnit:it.timeUnit||"sec",distUnit:it.distUnit||"mi",sets:Array.from({length:n},()=>({reps:"",weight:"",time:"",dist:"",cal:""})),note:"",target:it.dose||deriveDose(it)});
   });
   mode="day";render();toast(`Added “${w.name}” — fill in what you did`);
 }
@@ -555,63 +575,60 @@ function renderExtras(){
   extras.forEach((x,xi)=>{h+=renderExtraCard(x,xi);});
   h+=`<div class="exwrap"><button class="mini" id="addExtraBtn">+ Add an activity</button></div></div></div>`;return h;
 }
-const EXTRA_TYPES=[["reps","Reps"],["time","Time"],["distance","Distance"],["cal","Cal"],["cardio","Cardio"]];
 function renderExtraCard(x,xi){
-  if(x.type==null)x.type=(x.kind==="cardio")?"cardio":"reps";
+  if(!Array.isArray(x.metrics))x.metrics=(x.type&&x.type!=="cardio")?canonMetrics([x.type]):["reps","weight"];
+  if(x.timeUnit==null)x.timeUnit="sec"; if(x.distUnit==null)x.distUnit=guessUnit(x.name);
+  if(!x.sets||!x.sets.length)x.sets=[{reps:"",weight:"",time:"",dist:"",cal:""}];
+  const cols=x.metrics.length?x.metrics:["reps"];
   let h=`<div class="exwrap" data-extra="${xi}"><div style="flex:1">`;
-  h+=`<input class="extra-name" data-ex="name" data-xi="${xi}" value="${esc(x.name||"")}" placeholder="What did you do?">`;
+  h+=`<input class="extra-name" data-exf="name" data-xi="${xi}" value="${esc(x.name||"")}" placeholder="What did you do?">`;
   if(x.target)h+=`<div class="sub" style="margin:3px 2px 0">🎯 Target: ${esc(x.target)}</div>`;
-  h+=`<div class="kindtoggle">${EXTRA_TYPES.map(t=>`<button data-extype="${t[0]}" data-xi="${xi}" class="${x.type===t[0]?'on':''}">${t[1]}</button>`).join("")}</div>`;
-  if(x.type==="cardio"){
-    let opts='<option value="">Effort 1–10</option>';for(let i=1;i<=10;i++)opts+=`<option value="${i}" ${String(x.rpe)===String(i)?'selected':''}>${i}</option>`;
-    if(x.dunit==null)x.dunit=guessUnit(x.name);
-    const uopts=DIST_UNITS.map(u=>`<option value="${u}" ${x.dunit===u?"selected":""}>${u}</option>`).join("");
-    h+=`<div class="cardio-fields"><div class="row2"><label>Minutes<input data-ex="duration" data-xi="${xi}" inputmode="numeric" value="${esc(x.duration||"")}" placeholder="min"></label><label>Effort<select data-ex="rpe" data-xi="${xi}">${opts}</select></label></div>
-    <div class="row2"><label>Distance<input data-ex="distance" data-xi="${xi}" inputmode="decimal" value="${esc(x.distance||"")}" placeholder="optional"></label><label>Unit<select data-ex="dunit" data-xi="${xi}">${uopts}</select></label></div></div>`;
-  }else{
-    const type=x.type,hasUnit=(type==="time"||type==="distance");
-    if(hasUnit&&x.unit==null)x.unit=(type==="distance"?guessUnit(x.name):"sec");
-    const vhdr=valLabel(type)+(hasUnit?` <span style="font-weight:400;color:#6b7884">(${esc(x.unit)})</span>`:"");
-    h+=`<div class="sets"><table><thead><tr><th></th><th>${vhdr}</th><th>Weight (lb)</th><th></th></tr></thead><tbody data-exsets="${xi}">`;
-    (x.sets||[]).forEach((s,si)=>{h+=extraSetRow(xi,si,s);});
-    h+=`</tbody></table><div class="setbtns"><button class="mini" data-exaddset="${xi}">+ Add set</button>`;
-    if(hasUnit){const opts=(type==="time"?TIME_UNITS:DIST_UNITS).map(u=>`<option value="${u}" ${x.unit===u?"selected":""}>${u}</option>`).join("");h+=`<span style="margin-left:10px;font-size:12px;color:#6b7884">unit <select data-exunit="${xi}">${opts}</select></span>`;}
-    h+=`</div></div>`;
-  }
-  h+=`<textarea class="exnote" data-ex="note" data-xi="${xi}" placeholder="Note…">${esc(x.note||"")}</textarea>`;
+  h+=`<div class="kindtoggle" style="flex-wrap:wrap">${METRIC_ORDER.map(m=>`<button data-exmetric="${m}" data-xi="${xi}" class="${cols.includes(m)?'on':''}">${METRIC_LABEL[m]}</button>`).join("")}</div>`;
+  const heads=cols.map(m=>`<th>${esc(mHeader(x,m))}</th>`).join("");
+  h+=`<div class="sets"><table><thead><tr><th></th>${heads}<th></th></tr></thead><tbody data-exsets="${xi}">`;
+  x.sets.forEach((s,si)=>{h+=extraSetRow(xi,si,s,cols);});
+  h+=`</tbody></table><div class="setbtns" style="flex-wrap:wrap;gap:8px"><button class="mini" data-exaddset="${xi}">+ Add set</button>`;
+  if(cols.includes("time"))h+=`<span style="font-size:12px;color:#6b7884">time <select data-extu="${xi}">${TIME_UNITS.map(u=>`<option ${x.timeUnit===u?"selected":""}>${u}</option>`).join("")}</select></span>`;
+  if(cols.includes("distance"))h+=`<span style="font-size:12px;color:#6b7884">dist <select data-exdu="${xi}">${DIST_UNITS.map(u=>`<option ${x.distUnit===u?"selected":""}>${u}</option>`).join("")}</select></span>`;
+  h+=`</div></div>`;
+  h+=`<textarea class="exnote" data-exf="note" data-xi="${xi}" placeholder="Note…">${esc(x.note||"")}</textarea>`;
   h+=`<div style="margin-top:7px"><button class="mini" data-exrm="${xi}" style="color:#b06a6a">Remove</button></div></div></div>`;return h;
 }
-function extraSetRow(xi,si,s){return `<tr><td>${si+1}</td><td><input inputmode="numeric" data-exs="reps" data-xi="${xi}" data-i="${si}" value="${esc(s.reps)}" placeholder="–"></td><td><input inputmode="decimal" data-exs="weight" data-xi="${xi}" data-i="${si}" value="${esc(s.weight)}" placeholder="–"></td><td></td></tr>`;}
+function extraSetRow(xi,si,s,cols){cols=cols||["reps"];const cell=m=>{const f=METRIC_FIELD[m];const mode=(m==="weight"||m==="distance")?"decimal":"numeric";return `<td><input inputmode="${mode}" data-exs="${f}" data-xi="${xi}" data-i="${si}" value="${esc(s[f]==null?"":s[f])}" placeholder="–"></td>`;};return `<tr><td>${si+1}</td>${cols.map(cell).join("")}<td></td></tr>`;}
 function bindExtras(){
   const add=document.getElementById("addExtraBtn");
-  if(add)add.onclick=()=>{extras.push({name:"",type:"reps",unit:"",sets:[{reps:"",weight:""}],duration:"",rpe:"",note:""});render();};
-  document.querySelectorAll("[data-ex]").forEach(el=>{el.oninput=el.onchange=()=>{const xi=+el.dataset.xi;extras[xi][el.dataset.ex]=el.value;updateSaveCount();};});
-  document.querySelectorAll("[data-extype]").forEach(b=>b.onclick=()=>{const xi=+b.dataset.xi;const t=b.getAttribute("data-extype");extras[xi].type=t;if(t!=="cardio"&&(!extras[xi].sets||!extras[xi].sets.length))extras[xi].sets=[{reps:"",weight:""}];if(t==="time"&&!extras[xi].unit)extras[xi].unit="sec";if(t==="distance"&&!extras[xi].unit)extras[xi].unit=guessUnit(extras[xi].name);render();});
+  if(add)add.onclick=()=>{extras.push({name:"",metrics:["reps","weight"],sets:[{reps:"",weight:"",time:"",dist:"",cal:""}],timeUnit:"sec",distUnit:"mi",note:""});render();};
+  document.querySelectorAll("[data-exf]").forEach(el=>{el.oninput=el.onchange=()=>{const xi=+el.dataset.xi;extras[xi][el.dataset.exf]=el.value;updateSaveCount();};});
+  document.querySelectorAll("[data-exmetric]").forEach(b=>b.onclick=()=>{const xi=+b.dataset.xi;const m=b.getAttribute("data-exmetric");const x=extras[xi];if(!Array.isArray(x.metrics))x.metrics=[];x.metrics=x.metrics.includes(m)?x.metrics.filter(y=>y!==m):canonMetrics(x.metrics.concat(m));render();});
   document.querySelectorAll("[data-exs]").forEach(inp=>inp.oninput=()=>{const xi=+inp.dataset.xi;extras[xi].sets[+inp.dataset.i][inp.dataset.exs]=inp.value;updateSaveCount();});
-  document.querySelectorAll("[data-exaddset]").forEach(b=>b.onclick=()=>{const xi=+b.getAttribute("data-exaddset");extras[xi].sets.push({reps:"",weight:""});render();});
-  document.querySelectorAll("[data-exunit]").forEach(sel=>sel.onchange=()=>{const xi=+sel.getAttribute("data-exunit");extras[xi].unit=sel.value;render();});
+  document.querySelectorAll("[data-exaddset]").forEach(b=>b.onclick=()=>{const xi=+b.getAttribute("data-exaddset");const ls=extras[xi].sets[extras[xi].sets.length-1]||{};extras[xi].sets.push({reps:ls.reps||"",weight:ls.weight||"",time:ls.time||"",dist:ls.dist||"",cal:ls.cal||""});render();});
+  document.querySelectorAll("[data-extu]").forEach(sel=>sel.onchange=()=>{extras[+sel.getAttribute("data-extu")].timeUnit=sel.value;render();});
+  document.querySelectorAll("[data-exdu]").forEach(sel=>sel.onchange=()=>{extras[+sel.getAttribute("data-exdu")].distUnit=sel.value;render();});
   document.querySelectorAll("[data-exrm]").forEach(b=>b.onclick=()=>{extras.splice(+b.getAttribute("data-exrm"),1);render();});
 }
 
 function hasData(sd){return !!(sd.done||(sd.note&&sd.note.trim()!=="")||sd.touched);}
-function extraHasData(x){return !!((x.name&&x.name.trim())||x.note||x.duration||x.rpe||x.distance||(x.sets&&x.sets.some(s=>s.reps||s.weight)));}
+function extraHasData(x){return !!((x.name&&x.name.trim())||x.note||(x.sets&&x.sets.some(s=>["reps","weight","time","dist","cal"].some(f=>ne(s[f])))));}
 function updateSaveCount(){
   let n=0;Object.values(sessionData).forEach(sd=>{if(hasData(sd))n++;});extras.forEach(x=>{if(extraHasData(x))n++;});
   const el=document.getElementById("savecount");if(el)el.textContent=n?`${n} item${n>1?"s":""} ready`:"Nothing logged yet";
   const sb=document.getElementById("saveBtn");if(sb)sb.disabled=n===0;
 }
 
-function typedRows(base,name,type,unit,sets,note){
+function metricRows(base,name,src,sets,note){
+  const cols=(src.metrics&&src.metrics.length)?src.metrics:["reps"];
+  const filled=(sets||[]).filter(s=>cols.some(m=>ne(s[METRIC_FIELD[m]])));
   const out=[];
-  const real=(sets||[]).filter(s=>(s.reps!==""&&s.reps!=null)||(s.weight!==""&&s.weight!=null));
-  if(!real.length){out.push({...base,exercise_name:name,set_number:1,reps:null,weight:null,note:note||null});return out;}
-  real.forEach((s,si)=>{
+  if(!filled.length){out.push({...base,exercise_name:name,set_number:1,reps:null,weight:null,note:note||null});return out;}
+  filled.forEach((s,si)=>{
     const row={...base,exercise_name:name,set_number:si+1,note:si===0?(note||null):null};
-    const v=s.reps;
-    if(type==="time"){ if((unit||"sec")==="sec")row.duration_sec=numOrNull(v); else row.duration_min=numOrNull(v); row.weight=numOrNull(s.weight); }
-    else if(type==="distance"){ row.distance=numOrNull(v); row.distance_unit=unit||"mi"; row.weight=numOrNull(s.weight); }
-    else if(type==="cal"){ row.calories=numOrNull(v); row.weight=numOrNull(s.weight); }
-    else { row.reps=(v===""||v==null)?null:String(v); row.weight=numOrNull(s.weight); }
+    cols.forEach(m=>{const v=s[METRIC_FIELD[m]];
+      if(m==="reps")row.reps=ne(v)?String(v):null;
+      else if(m==="weight")row.weight=numOrNull(v);
+      else if(m==="time"){if((src.timeUnit||"sec")==="sec")row.duration_sec=numOrNull(v);else row.duration_min=numOrNull(v);}
+      else if(m==="distance"){row.distance=numOrNull(v);row.distance_unit=src.distUnit||"mi";}
+      else if(m==="cal")row.calories=numOrNull(v);
+    });
     out.push(row);
   });
   return out;
@@ -623,19 +640,17 @@ async function saveWorkout(){
   if(day && !day.rest){
     (day.blocks||[]).forEach((b,bi)=>(b.ex||[]).forEach((e,ei)=>{
       const sd=sessionData[exKey(bi,ei)];if(!sd||!hasData(sd))return;
-      let style=exStyle(b,e); if(style==="typed"&&!(e.dose&&(""+e.dose).trim()))style="done";
+      let style=exStyle(b,e); const prog=(ensureMetrics(e).metrics||[]); if(style==="typed"&&!prog.length&&!(e.dose&&(""+e.dose).trim()))style="done";
       const base={athlete_id:athlete.id,athlete_slug:athlete.slug,log_date:date,day_dow:day.dow,day_focus:day.focus||null,block_title:b.title||null,completed:true};
       if(style==="cardio")rows.push({...base,exercise_name:(sd.activity||e.name),set_number:1,reps:null,weight:null,duration_min:sd.duration?parseFloat(sd.duration):null,rpe:sd.rpe?parseFloat(sd.rpe):null,distance:sd.distance?parseFloat(sd.distance):null,distance_unit:sd.distance?(sd.dunit||"mi"):null,note:sd.note||null});
-      else if(style==="typed"){const type=exType(e);const unit=sd.unit||exUnit(e)||(type==="distance"?guessUnit(e.name):(type==="time"?"sec":""));typedRows(base,e.name,type,unit,sd.sets,sd.note).forEach(r=>rows.push(r));}
+      else if(style==="typed"){metricRows(base,e.name,sd,sd.sets,sd.note).forEach(r=>rows.push(r));}
       else rows.push({...base,exercise_name:e.name,set_number:1,reps:null,weight:null,note:sd.note||null});
     }));
   }
   extras.forEach(x=>{
     if(!extraHasData(x))return;
     const base={athlete_id:athlete.id,athlete_slug:athlete.slug,log_date:date,day_dow:(day&&day.dow)||dowOf(selDate),day_focus:(day&&day.focus)||null,block_title:"Added by athlete",completed:true};
-    const xt=x.type||(x.kind==="cardio"?"cardio":"reps");
-    if(xt==="cardio")rows.push({...base,exercise_name:x.name||"Extra cardio",set_number:1,reps:null,weight:null,duration_min:x.duration?parseFloat(x.duration):null,rpe:x.rpe?parseFloat(x.rpe):null,distance:x.distance?parseFloat(x.distance):null,distance_unit:x.distance?(x.dunit||"mi"):null,note:x.note||null});
-    else{const unit=x.unit||(xt==="distance"?guessUnit(x.name):(xt==="time"?"sec":""));typedRows(base,x.name||"Extra",xt,unit,x.sets,x.note).forEach(r=>rows.push(r));}
+    metricRows(base,x.name||"Extra",x,x.sets,x.note).forEach(r=>rows.push(r));
   });
   if(!rows.length){toast("Nothing to save yet");return;}
   const btn=document.getElementById("saveBtn");btn.disabled=true;btn.textContent="Saving…";
