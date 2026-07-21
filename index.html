@@ -163,7 +163,8 @@ const realDB={
   async insertLogs(rows){const r=await fetch(`${REST}/logs`,{method:"POST",headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY,"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify(rows)});if(!r.ok)throw new Error(await r.text());return r.json();},
   async updateLog(id,patch){const r=await fetch(`${REST}/logs?id=eq.${id}`,{method:"PATCH",headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY,"Content-Type":"application/json"},body:JSON.stringify(patch)});if(!r.ok)throw new Error(await r.text());},
   async deleteLog(id){const r=await fetch(`${REST}/logs?id=eq.${id}`,{method:"DELETE",headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY}});if(!r.ok)throw new Error(await r.text());},
-  async deleteLogsFor(slug,date,name){const r=await fetch(`${REST}/logs?athlete_slug=eq.${encodeURIComponent(slug)}&log_date=eq.${date}&exercise_name=eq.${encodeURIComponent(name)}`,{method:"DELETE",headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY}});if(!r.ok)throw new Error(await r.text());}
+  async deleteLogsFor(slug,date,name){const r=await fetch(`${REST}/logs?athlete_slug=eq.${encodeURIComponent(slug)}&log_date=eq.${date}&exercise_name=eq.${encodeURIComponent(name)}`,{method:"DELETE",headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY}});if(!r.ok)throw new Error(await r.text());},
+  async updateAthlete(id,patch){const r=await fetch(`${REST}/athletes?id=eq.${id}`,{method:"PATCH",headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY,"Content-Type":"application/json"},body:JSON.stringify(patch)});if(!r.ok)throw new Error(await r.text());}
 };
 const DEMO_PROGRAM={days:[
   {dow:"Mon",focus:"Strength A + Arms",badge:"55–60 min",blocks:[
@@ -177,10 +178,11 @@ const DEMO_PROGRAM={days:[
 function makeDemoDB(){let athlete={id:"demo-1",slug:SLUG||"demo",name:"Demo Athlete",program:DEMO_PROGRAM,overrides:{}};let logs=[];let n=0;
   return {async getAthlete(){return athlete;},async getLogs(){return logs.slice().sort((a,b)=>(b.log_date+b.created_at).localeCompare(a.log_date+a.created_at));},
     async insertLogs(rows){const out=rows.map(r=>({...r,id:"d"+(++n),created_at:new Date().toISOString()}));logs.push(...out);return out;},
-    async updateLog(id,patch){const l=logs.find(x=>x.id===id);if(l)Object.assign(l,patch);},async deleteLog(id){logs=logs.filter(x=>x.id!==id);},async deleteLogsFor(slug,date,name){logs=logs.filter(x=>!(x.log_date===date&&x.exercise_name===name));}};}
+    async updateLog(id,patch){const l=logs.find(x=>x.id===id);if(l)Object.assign(l,patch);},async deleteLog(id){logs=logs.filter(x=>x.id!==id);},async deleteLogsFor(slug,date,name){logs=logs.filter(x=>!(x.log_date===date&&x.exercise_name===name));},async updateAthlete(id,patch){Object.assign(athlete,patch);}};}
 const DB=DEMO?makeDemoDB():realDB;
 
 let athlete=null,program=null,logs=[],selDate=null,mode="day",backfill=false,sessionData={},extras=[];
+let workouts=[],editingWorkout=null;
 let calMonth=new Date();
 let collapsed={};
 function clpKey(bi){return selDate+"|"+bi;}
@@ -197,7 +199,49 @@ function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;"
 function toast(msg,err){const t=document.getElementById("toast");t.textContent=msg;t.className="toast show"+(err?" err":"");setTimeout(()=>t.className="toast",2200);}
 function defaultSetCount(dose){const m=(dose||"").match(/(\d+)\s*[×x]/);return m?Math.min(parseInt(m[1]),6):1;}
 function exKey(bi,ei){return bi+"-"+ei;}
-function exStyle(block,e){if((block.kind||"")==="cardio")return"cardio";if(/×|x/.test(e.dose||""))return"sets";return"done";}
+function exStyle(block,e){if((block.kind||"")==="cardio")return"cardio";return"typed";}
+/* ---- structured type model (shared with coach editor) ---- */
+const TIME_UNITS=["sec","min"];
+function parseDose(raw){
+  const out={sets:"",reps:"",repType:"reps",repUnit:"",detail:""};
+  if(!raw||!(""+raw).trim()){out.repType="";return out;}
+  let s=(""+raw).trim();
+  const sm=s.match(/^(\d+)\s*[×xX]\s*(.*)$/);
+  if(sm){out.sets=sm[1];s=sm[2].trim();}
+  const vm=s.match(/^(\d+(?:\s*[–\-]\s*\d+)?(?:\.\d+)?)\s*(.*)$/);
+  if(vm){
+    out.reps=vm[1].replace(/\s+/g,"");
+    let rest=vm[2].trim();
+    const um=rest.match(/^(mi|km|yd|m|secs?|s|mins?|cal|reps?|pumps)\b\.?/i);
+    if(um){const u=um[1].toLowerCase();
+      if(u==="mi"){out.repType="distance";out.repUnit="mi";}
+      else if(u==="km"){out.repType="distance";out.repUnit="km";}
+      else if(u==="yd"){out.repType="distance";out.repUnit="yd";}
+      else if(u==="m"){out.repType="distance";out.repUnit="m";}
+      else if(u==="s"||u.indexOf("sec")===0){out.repType="time";out.repUnit="sec";}
+      else if(u.indexOf("min")===0){out.repType="time";out.repUnit="min";}
+      else if(u==="cal"){out.repType="cal";out.repUnit="";}
+      else{out.repType="reps";}
+      rest=rest.slice(um[0].length).trim();
+    }else{out.repType="reps";}
+    out.detail=rest;
+  }else{out.sets="";out.reps="";out.repType="";out.detail=s;}
+  return out;
+}
+/* effective type of a program exercise: reps | time | distance | cal */
+function exType(e){
+  if(e&&e.repType){return e.repType==="cal"?"cal":e.repType;}
+  const p=parseDose((e&&e.dose)||"");
+  return p.repType||"reps";
+}
+function exUnit(e){ if(e&&e.repUnit)return e.repUnit; const p=parseDose((e&&e.dose)||""); return p.repUnit||""; }
+function numOrNull(v){return (v===""||v==null)?null:(isNaN(parseFloat(v))?null:parseFloat(v));}
+function valLabel(type){return type==="time"?"Time":type==="distance"?"Distance":type==="cal"?"Calories":"Reps";}
+function typeUnitOptions(type,cur){
+  const opts=type==="time"?TIME_UNITS:(type==="distance"?DIST_UNITS:[]);
+  if(!opts.length)return"";
+  return `<select class="unitsel">${opts.map(u=>`<option value="${u}" ${cur===u?"selected":""}>${u}</option>`).join("")}</select>`;
+}
 function programForDow(dow){return (program.days||[]).find(d=>d.dow===dow);}
 function dayForDate(date){
   const ov=(athlete&&athlete.overrides)?athlete.overrides[date]:null;
@@ -214,17 +258,29 @@ function lastSessionFor(name,beforeDate){
   const sess=rows.filter(l=>l.log_date===d).sort((a,b)=>(a.set_number||0)-(b.set_number||0));
   return {date:d,rows:sess};
 }
+function rowVal(r){
+  if(r.reps!=null)return ""+r.reps;
+  if(r.duration_sec!=null)return r.duration_sec+" sec";
+  if(r.duration_min!=null)return r.duration_min+" min";
+  if(r.distance!=null)return r.distance+" "+(r.distance_unit||"");
+  if(r.calories!=null)return r.calories+" cal";
+  return "–";
+}
+function summarizeRows(rows){
+  if(!rows||!rows.length)return"";
+  const r0=rows[0];
+  const isRep = r0.reps!=null || (r0.duration_min==null&&r0.duration_sec==null&&r0.distance==null&&r0.calories==null);
+  if(!isRep && rows.length===1){
+    let s=rowVal(r0); if(r0.weight!=null)s+=" @ "+r0.weight+" lb"; if(r0.rpe!=null)s+=" · RPE "+r0.rpe; return s;
+  }
+  const vals=rows.map(rowVal);
+  const wts=[...new Set(rows.map(r=>r.weight).filter(w=>w!=null))];
+  const w=wts.length===1?` @ ${wts[0]} lb`:(wts.length>1?` @ ${Math.min(...wts)}–${Math.max(...wts)} lb`:"");
+  return `${rows.length} set${rows.length>1?"s":""} · ${vals.join(", ")}${isRep?" reps":""}${w}`;
+}
 function fmtLast(name){
   const s=lastSessionFor(name,selDate);if(!s)return"";
-  const r0=s.rows[0];
-  if(r0.duration_min!=null||r0.rpe!=null||r0.distance!=null){
-    let bits=[];if(r0.duration_min!=null)bits.push(r0.duration_min+" min");if(r0.distance!=null)bits.push(r0.distance+" "+(r0.distance_unit||"mi"));if(r0.rpe!=null)bits.push("RPE "+r0.rpe);
-    return `Last (${s.date}): ${bits.join(", ")}`;
-  }
-  const reps=s.rows.map(x=>x.reps!=null?x.reps:"–").join(", ");
-  const wts=[...new Set(s.rows.map(x=>x.weight).filter(w=>w!=null))];
-  const w=wts.length===1?` @ ${wts[0]} lb`:(wts.length>1?` @ ${Math.min(...wts)}–${Math.max(...wts)} lb`:"");
-  return `Last (${s.date}): ${s.rows.length} set${s.rows.length>1?"s":""} · ${reps} reps${w}`;
+  return `Last (${s.date}): ${summarizeRows(s.rows)}`;
 }
 
 async function init(){
@@ -232,6 +288,7 @@ async function init(){
   try{athlete=await DB.getAthlete(SLUG);}catch(e){showError("Couldn't reach the database.",e);return;}
   if(!athlete){document.getElementById("title").textContent="Not found";document.getElementById("app").innerHTML=`<div class="center"><div class="big">No athlete called “${esc(SLUG)}”</div>Check the spelling, or add them on the coach page.</div>`;return;}
   program=athlete.program||{days:[]};
+  workouts=Array.isArray(athlete.workouts)?athlete.workouts:[];
   document.getElementById("title").textContent=athlete.name;
   document.getElementById("subtitle").textContent="Pick a date · past shows what you did · today shows your plan";
   try{logs=await DB.getLogs(SLUG);}catch(e){logs=[];}
@@ -251,6 +308,7 @@ function renderDateNav(){
     <button class="chip" onclick="printWeek()">🖨 Week</button>
     <button class="chip" onclick="printDay()">🖨 Day</button>
     <button class="chip ${mode==='history'?'on':''}" onclick="setMode('history')">History</button>
+    <button class="chip ${mode==='workouts'?'on':''}" onclick="openWorkouts()">🏋 Workouts</button>
     <button class="chip" onclick="markRest()">😴 Rest</button>
   </div>`;
 }
@@ -263,6 +321,7 @@ function startBackfill(){backfill=true;sessionData={};extras=[];render();}
 function render(){
   if(mode==="history")return renderHistory();
   if(mode==="calendar")return renderAthCal();
+  if(mode==="workouts")return renderWorkouts();
   const app=document.getElementById("app");
   let html=renderDateNav();
   const day=dayForDate(selDate);
@@ -302,11 +361,18 @@ function render(){
 
 /* ---------------- logged (past) day ---------------- */
 function loggedRow(l){
-  const cardio=l.duration_min!=null||l.rpe!=null||l.distance!=null;
-  let h=`<div class="hist-row" data-id="${l.id}"><span class="hx">${esc(l.exercise_name)}${(!cardio)?` <span style="color:#6b7884;font-weight:400">· set ${l.set_number}</span>`:""}</span>`;
-  if(cardio){const uopts=DIST_UNITS.map(u=>`<option value="${u}" ${(l.distance_unit||"mi")===u?"selected":""}>${u}</option>`).join("");
-    h+=`<label style="font-size:12px;color:#6b7884">min <input data-h="duration_min" value="${esc(l.duration_min!=null?l.duration_min:"")}"></label><label style="font-size:12px;color:#6b7884">RPE <input data-h="rpe" value="${esc(l.rpe!=null?l.rpe:"")}"></label><label style="font-size:12px;color:#6b7884">dist <input data-h="distance" value="${esc(l.distance!=null?l.distance:"")}" style="width:52px"></label><select data-h="distance_unit" style="font-size:12px">${uopts}</select>`;}
-  else h+=`<label style="font-size:12px;color:#6b7884">reps <input data-h="reps" value="${esc(l.reps||"")}"></label><label style="font-size:12px;color:#6b7884">lb <input data-h="weight" value="${esc(l.weight!=null?l.weight:"")}"></label>`;
+  const isSet = l.reps!=null || (l.duration_min==null&&l.duration_sec==null&&l.distance==null&&l.calories==null&&l.rpe==null);
+  const fld=(lab,f,val,extra="")=>`<label style="font-size:12px;color:#6b7884">${lab} <input data-h="${f}" value="${esc(val==null?"":val)}" ${extra}></label>`;
+  let h=`<div class="hist-row" data-id="${l.id}"><span class="hx">${esc(l.exercise_name)}${isSet?` <span style="color:#6b7884;font-weight:400">· set ${l.set_number}</span>`:""}</span>`;
+  if(isSet){ h+=fld("reps","reps",l.reps)+fld("lb","weight",l.weight); }
+  else {
+    if(l.duration_min!=null)h+=fld("min","duration_min",l.duration_min);
+    if(l.duration_sec!=null)h+=fld("sec","duration_sec",l.duration_sec);
+    if(l.distance!=null){h+=fld("dist","distance",l.distance,'style="width:52px"');const uopts=DIST_UNITS.map(u=>`<option value="${u}" ${(l.distance_unit||"mi")===u?"selected":""}>${u}</option>`).join("");h+=`<select data-h="distance_unit" style="font-size:12px">${uopts}</select>`;}
+    if(l.calories!=null)h+=fld("cal","calories",l.calories);
+    if(l.weight!=null)h+=fld("lb","weight",l.weight);
+    if(l.rpe!=null)h+=fld("RPE","rpe",l.rpe);
+  }
   h+=`<button class="del" data-del="${l.id}">🗑</button>${l.note?`<div class="hnote">📝 ${esc(l.note)}</div>`:""}</div>`;
   return h;
 }
@@ -327,11 +393,16 @@ function renderExercise(block,bi,e,ei,dateLogs){
   const key=exKey(bi,ei);
   const sd=sessionData[key]||(sessionData[key]={sets:[],note:"",done:false,activity:"",duration:"",rpe:""});
   const last=lastSessionFor(e.name,selDate);
-  const style=exStyle(block,e);
-  if(style==="sets" && sd.sets.length===0 && !sd._init){
-    const n=defaultSetCount(e.dose);const lw=(last&&last.rows[0]&&last.rows[0].weight!=null)?last.rows[0].weight:"";
-    for(let i=0;i<n;i++)sd.sets.push({reps:"",weight:lw});
-    sd._init=true;
+  let style=exStyle(block,e);
+  if(style==="typed" && !(e.dose&&(""+e.dose).trim())) style="done";
+  const type=(style==="typed")?exType(e):null;
+  if(style==="typed"){
+    if(sd.unit==null)sd.unit=exUnit(e)||(type==="distance"?guessUnit(e.name):(type==="time"?"sec":""));
+    if(sd.sets.length===0 && !sd._init){
+      const n=defaultSetCount(e.dose);const lw=(type==="reps"&&last&&last.rows[0]&&last.rows[0].weight!=null)?last.rows[0].weight:"";
+      for(let i=0;i<n;i++)sd.sets.push({reps:"",weight:lw});
+      sd._init=true;
+    }
   }
   if(style==="cardio" && !sd._init){sd.activity=e.name;sd._init=true;}
   const already=loggedForExOnDate(e.name,selDate);
@@ -342,15 +413,15 @@ function renderExercise(block,bi,e,ei,dateLogs){
   if(e.cue)h+=`<div class="ex-cue">${e.cue}</div>`;
   if(e.coachNote)h+=`<div class="ex-coachnote"><b>Coach:</b> ${esc(e.coachNote)}</div>`;
   const lt=fmtLast(e.name);if(lt)h+=`<div class="lastval">⟲ ${esc(lt)}</div>`;
-  if(already.length){
-    const cardio=already[0].duration_min!=null||already[0].rpe!=null;
-    const summ=cardio?(`${already[0].duration_min!=null?already[0].duration_min+" min":""}${already[0].rpe!=null?(already[0].duration_min!=null?", ":"")+"RPE "+already[0].rpe:""}`):(`${already.length} set${already.length>1?"s":""} · ${already.map(x=>x.reps!=null?x.reps:"–").join(", ")} reps${already[0].weight!=null?" @ "+already[0].weight+" lb":""}`);
-    h+=`<div class="logged-badge">✓ Logged this day: ${esc(summ)} — re-saving replaces it</div>`;
-  }
-  if(style==="sets"){
-    h+=`<div class="sets"><table><thead><tr><th></th><th>Reps</th><th>Weight (lb)</th><th></th></tr></thead><tbody data-sets="${key}">`;
+  if(already.length){h+=`<div class="logged-badge">✓ Logged this day: ${esc(summarizeRows(already))} — re-saving replaces it</div>`;}
+  if(style==="typed"){
+    const hasUnit=(type==="time"||type==="distance");
+    const vhdr=valLabel(type)+(hasUnit?` <span style="font-weight:400;color:#6b7884">(${esc(sd.unit)})</span>`:"");
+    h+=`<div class="sets"><table><thead><tr><th></th><th>${vhdr}</th><th>Weight (lb)</th><th></th></tr></thead><tbody data-sets="${key}">`;
     sd.sets.forEach((s,si)=>{h+=setRow(key,si,s);});
-    h+=`</tbody></table><div class="setbtns"><button class="mini" data-addset="${key}">+ Add set</button></div></div>`;
+    h+=`</tbody></table><div class="setbtns"><button class="mini" data-addset="${key}">+ Add set</button>`;
+    if(hasUnit){const opts=(type==="time"?TIME_UNITS:DIST_UNITS).map(u=>`<option value="${u}" ${sd.unit===u?"selected":""}>${u}</option>`).join("");h+=`<span style="margin-left:10px;font-size:12px;color:#6b7884">unit <select data-unit="${key}">${opts}</select></span>`;}
+    h+=`</div></div>`;
   }else if(style==="cardio"){
     h+=renderCardioFields(key,sd,e);
   }
@@ -383,6 +454,7 @@ function bindExercises(){
   document.querySelectorAll("textarea[data-note]").forEach(t=>t.oninput=()=>{sessionData[t.dataset.note].note=t.value;updateSaveCount();});
   document.querySelectorAll("[data-addset]").forEach(b=>b.onclick=()=>{const k=b.getAttribute("data-addset");const sets=sessionData[k].sets;const ls=sets[sets.length-1]||{reps:"",weight:""};sets.push({reps:ls.reps,weight:ls.weight});sessionData[k].touched=true;redrawSets(k);updateSaveCount();});
   document.querySelectorAll("[data-rmset]").forEach(b=>b.onclick=()=>{const k=b.getAttribute("data-rmset");if(sessionData[k].sets.length<=1)return;sessionData[k].sets.splice(+b.dataset.i,1);redrawSets(k);updateSaveCount();});
+  document.querySelectorAll("[data-unit]").forEach(sel=>sel.onchange=()=>{const k=sel.getAttribute("data-unit");sessionData[k].unit=sel.value;sessionData[k].touched=true;render();});
 }
 function rebindSetControls(k){
   document.querySelectorAll(`input[data-k="${k}"][data-f]`).forEach(inp=>inp.oninput=()=>{sessionData[k].sets[+inp.dataset.i][inp.dataset.f]=inp.value;sessionData[k].touched=true;updateSaveCount();});
@@ -390,6 +462,91 @@ function rebindSetControls(k){
 }
 function redrawSets(k){const tb=document.querySelector(`[data-sets="${k}"]`);if(!tb)return;tb.innerHTML=sessionData[k].sets.map((s,si)=>setRow(k,si,s)).join("");rebindSetControls(k);}
 
+/* ---------------- athlete-built workouts ---------------- */
+function deriveDose(e){
+  const sets=(e.sets==null?"":(""+e.sets)).trim();
+  const reps=(e.reps==null?"":(""+e.reps)).trim();
+  const t=e.repType||"",unit=e.repUnit||"";
+  const detail=(e.detail==null?"":(""+e.detail)).trim();
+  let core="";
+  if(reps){const ul=(t==="distance"||t==="time")?unit:(t==="cal"?"cal":"");const val=reps+(ul?(" "+ul):"");core=(sets!=="")?(sets+" × "+val):val;}
+  else if(sets!=="")core=sets+" ×";
+  let out=core; if(detail)out=out?(out+" "+detail):detail; return out.trim();
+}
+const WIN='font-family:inherit;font-size:15px;border:1.5px solid #d8dde3;border-radius:8px;padding:8px;background:#fff;color:inherit';
+function newWorkoutId(){return "w"+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36);}
+function openWorkouts(){editingWorkout=null;mode="workouts";render();}
+function renderWorkouts(){
+  const app=document.getElementById("app");
+  let html=renderDateNav();
+  document.getElementById("savebar").style.display="none";
+  if(editingWorkout){app.innerHTML=html+renderWorkoutEditor();bindWorkoutEditor();return;}
+  html+=`<div class="day-head"><h2>My workouts</h2><div class="meta">Build a workout once, then drop it onto any day to log it.</div></div>`;
+  html+=`<div style="margin:10px 0"><button class="chip on" onclick="newWorkout()">+ New workout</button></div>`;
+  if(!workouts.length)html+=`<div class="center"><div class="big">No saved workouts yet</div>Tap <b>New workout</b> to build one.</div>`;
+  workouts.forEach(w=>{
+    const names=(w.items||[]).map(i=>i.name).filter(Boolean);
+    html+=`<div class="block extra"><div class="block-head" style="cursor:default"><div style="flex:1;min-width:0"><h3>${esc(w.name||"Untitled")}</h3><div class="sub">${(w.items||[]).length} exercise${(w.items||[]).length!==1?"s":""}${names.length?" · "+esc(names.slice(0,4).join(", "))+(names.length>4?"…":""):""}</div></div></div>
+      <div class="block-body"><div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="chip on" onclick="applyWorkoutToDay('${w.id}')">Add to ${esc(niceDate(selDate).replace(/,.*/,""))}</button>
+        <button class="chip" onclick="editWorkout('${w.id}')">Edit</button>
+        <button class="chip" onclick="delWorkout('${w.id}')">Delete</button>
+      </div></div></div>`;
+  });
+  app.innerHTML=html;
+}
+function newWorkout(){editingWorkout={id:newWorkoutId(),name:"",items:[{name:"",sets:"",reps:"",repType:"reps",repUnit:"",detail:"",cue:""}]};render();}
+function editWorkout(id){const w=workouts.find(x=>x.id===id);editingWorkout=w?JSON.parse(JSON.stringify(w)):null;if(editingWorkout&&!editingWorkout.items.length)editingWorkout.items=[{name:"",sets:"",reps:"",repType:"reps",repUnit:"",detail:"",cue:""}];render();}
+async function delWorkout(id){if(!confirm("Delete this workout?"))return;workouts=workouts.filter(w=>w.id!==id);try{await DB.updateAthlete(athlete.id,{workouts});athlete.workouts=workouts;toast("Deleted");}catch(e){toast("Delete failed",true);}render();}
+function wItemFields(ii,it){
+  const mk=f=>`wSetField(${ii},'${f}',this.value)`;
+  const t=it.repType||"reps";
+  const unitOpts=t==="time"?TIME_UNITS:(t==="distance"?DIST_UNITS:[]);
+  const unitSel=unitOpts.length?`<select style="${WIN}" onchange="${mk('repUnit')}">${unitOpts.map(u=>`<option ${it.repUnit===u?"selected":""}>${u}</option>`).join("")}</select>`:"";
+  return `<div class="exwrap" style="display:block"><input style="${WIN};width:100%;font-weight:600" value="${esc(it.name||"")}" placeholder="Exercise name" onchange="wSetField(${ii},'name',this.value)">
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:7px">
+      <input style="${WIN};width:52px;text-align:center" value="${esc(it.sets==null?"":it.sets)}" placeholder="sets" onchange="${mk('sets')}"><span>×</span>
+      <input style="${WIN};width:74px;text-align:center" value="${esc(it.reps==null?"":it.reps)}" placeholder="reps" onchange="${mk('reps')}">
+      <select style="${WIN}" onchange="${mk('repType')}"><option value="reps" ${t==="reps"?"selected":""}>reps</option><option value="time" ${t==="time"?"selected":""}>time</option><option value="distance" ${t==="distance"?"selected":""}>dist</option><option value="cal" ${t==="cal"?"selected":""}>cal</option></select>${unitSel}
+      <input style="${WIN};flex:1;min-width:90px" value="${esc(it.detail==null?"":it.detail)}" placeholder="extra — e.g. @ 135 lb" onchange="${mk('detail')}"></div>
+    <input style="${WIN};width:100%;margin-top:7px" value="${esc(it.cue||"")}" placeholder="Cue / note (optional)" onchange="wSetField(${ii},'cue',this.value)">
+    <div style="margin-top:7px"><button class="mini" style="color:#b06a6a" onclick="wDelItem(${ii})">Remove</button></div></div>`;
+}
+function renderWorkoutEditor(){
+  const w=editingWorkout;
+  let h=`<div class="day-head"><h2>${w&&workouts.find(x=>x.id===w.id)?"Edit workout":"New workout"}</h2></div>`;
+  h+=`<div class="block extra"><div class="block-body">
+    <input id="wName" style="${WIN};width:100%;font-size:17px;font-weight:700" value="${esc(w.name||"")}" placeholder="Workout name (e.g. Push day)">
+    <div style="margin-top:10px">`;
+  (w.items||[]).forEach((it,ii)=>{h+=wItemFields(ii,it);});
+  h+=`</div><div style="margin-top:8px"><button class="mini" onclick="wAddItem()">+ Add exercise</button></div>
+    <div style="display:flex;gap:8px;margin-top:14px"><button class="chip" onclick="openWorkouts()">Cancel</button><button class="chip on" onclick="saveWorkoutDef()">Save workout</button></div>
+  </div></div>`;
+  return h;
+}
+function bindWorkoutEditor(){const n=document.getElementById("wName");if(n)n.onchange=()=>{editingWorkout.name=n.value;};}
+function wSetField(ii,f,v){const it=editingWorkout.items[ii];it[f]=v;if(f==="repType"){if((v==="time"||v==="distance")&&!it.repUnit)it.repUnit=(v==="time"?"sec":"m");if(v==="reps"||v==="cal")it.repUnit="";}it.dose=deriveDose(it);if(f==="repType")render();}
+function wAddItem(){const n=document.getElementById("wName");if(n)editingWorkout.name=n.value;editingWorkout.items.push({name:"",sets:"",reps:"",repType:"reps",repUnit:"",detail:"",cue:""});render();}
+function wDelItem(ii){const n=document.getElementById("wName");if(n)editingWorkout.name=n.value;editingWorkout.items.splice(ii,1);if(!editingWorkout.items.length)editingWorkout.items.push({name:"",sets:"",reps:"",repType:"reps",repUnit:"",detail:"",cue:""});render();}
+async function saveWorkoutDef(){
+  const n=document.getElementById("wName");if(n)editingWorkout.name=n.value;
+  if(!editingWorkout.name||!editingWorkout.name.trim()){toast("Give the workout a name",true);return;}
+  editingWorkout.items=(editingWorkout.items||[]).filter(it=>it.name&&it.name.trim());
+  editingWorkout.items.forEach(it=>it.dose=deriveDose(it));
+  if(!editingWorkout.items.length){toast("Add at least one exercise",true);return;}
+  const i=workouts.findIndex(w=>w.id===editingWorkout.id);
+  if(i>=0)workouts[i]=editingWorkout;else workouts.push(editingWorkout);
+  try{await DB.updateAthlete(athlete.id,{workouts});athlete.workouts=workouts;toast("Workout saved ✓");}catch(e){toast("Save failed",true);return;}
+  editingWorkout=null;render();
+}
+function applyWorkoutToDay(id){
+  const w=workouts.find(x=>x.id===id);if(!w)return;
+  (w.items||[]).forEach(it=>{
+    const t=it.repType||"reps";const n=Math.max(1,Math.min(parseInt(it.sets)||1,10));
+    extras.push({name:it.name,type:t==="cal"?"cal":t,unit:it.repUnit||"",sets:Array.from({length:n},()=>({reps:"",weight:""})),duration:"",rpe:"",note:"",target:it.dose||""});
+  });
+  mode="day";render();toast(`Added “${w.name}” — fill in what you did`);
+}
 /* ---------------- extras ---------------- */
 function renderExtrasWrap(){return `<div style="margin-top:18px">${renderExtras()}</div>`;}
 function renderExtras(){
@@ -398,20 +555,28 @@ function renderExtras(){
   extras.forEach((x,xi)=>{h+=renderExtraCard(x,xi);});
   h+=`<div class="exwrap"><button class="mini" id="addExtraBtn">+ Add an activity</button></div></div></div>`;return h;
 }
+const EXTRA_TYPES=[["reps","Reps"],["time","Time"],["distance","Distance"],["cal","Cal"],["cardio","Cardio"]];
 function renderExtraCard(x,xi){
+  if(x.type==null)x.type=(x.kind==="cardio")?"cardio":"reps";
   let h=`<div class="exwrap" data-extra="${xi}"><div style="flex:1">`;
   h+=`<input class="extra-name" data-ex="name" data-xi="${xi}" value="${esc(x.name||"")}" placeholder="What did you do?">`;
-  h+=`<div class="kindtoggle"><button data-exkind="strength" data-xi="${xi}" class="${x.kind==='strength'?'on':''}">Strength</button><button data-exkind="cardio" data-xi="${xi}" class="${x.kind==='cardio'?'on':''}">Cardio</button></div>`;
-  if(x.kind==='cardio'){
+  if(x.target)h+=`<div class="sub" style="margin:3px 2px 0">🎯 Target: ${esc(x.target)}</div>`;
+  h+=`<div class="kindtoggle">${EXTRA_TYPES.map(t=>`<button data-extype="${t[0]}" data-xi="${xi}" class="${x.type===t[0]?'on':''}">${t[1]}</button>`).join("")}</div>`;
+  if(x.type==="cardio"){
     let opts='<option value="">Effort 1–10</option>';for(let i=1;i<=10;i++)opts+=`<option value="${i}" ${String(x.rpe)===String(i)?'selected':''}>${i}</option>`;
     if(x.dunit==null)x.dunit=guessUnit(x.name);
     const uopts=DIST_UNITS.map(u=>`<option value="${u}" ${x.dunit===u?"selected":""}>${u}</option>`).join("");
     h+=`<div class="cardio-fields"><div class="row2"><label>Minutes<input data-ex="duration" data-xi="${xi}" inputmode="numeric" value="${esc(x.duration||"")}" placeholder="min"></label><label>Effort<select data-ex="rpe" data-xi="${xi}">${opts}</select></label></div>
     <div class="row2"><label>Distance<input data-ex="distance" data-xi="${xi}" inputmode="decimal" value="${esc(x.distance||"")}" placeholder="optional"></label><label>Unit<select data-ex="dunit" data-xi="${xi}">${uopts}</select></label></div></div>`;
   }else{
-    h+=`<div class="sets"><table><thead><tr><th></th><th>Reps</th><th>Weight (lb)</th><th></th></tr></thead><tbody data-exsets="${xi}">`;
+    const type=x.type,hasUnit=(type==="time"||type==="distance");
+    if(hasUnit&&x.unit==null)x.unit=(type==="distance"?guessUnit(x.name):"sec");
+    const vhdr=valLabel(type)+(hasUnit?` <span style="font-weight:400;color:#6b7884">(${esc(x.unit)})</span>`:"");
+    h+=`<div class="sets"><table><thead><tr><th></th><th>${vhdr}</th><th>Weight (lb)</th><th></th></tr></thead><tbody data-exsets="${xi}">`;
     (x.sets||[]).forEach((s,si)=>{h+=extraSetRow(xi,si,s);});
-    h+=`</tbody></table><div class="setbtns"><button class="mini" data-exaddset="${xi}">+ Add set</button></div></div>`;
+    h+=`</tbody></table><div class="setbtns"><button class="mini" data-exaddset="${xi}">+ Add set</button>`;
+    if(hasUnit){const opts=(type==="time"?TIME_UNITS:DIST_UNITS).map(u=>`<option value="${u}" ${x.unit===u?"selected":""}>${u}</option>`).join("");h+=`<span style="margin-left:10px;font-size:12px;color:#6b7884">unit <select data-exunit="${xi}">${opts}</select></span>`;}
+    h+=`</div></div>`;
   }
   h+=`<textarea class="exnote" data-ex="note" data-xi="${xi}" placeholder="Note…">${esc(x.note||"")}</textarea>`;
   h+=`<div style="margin-top:7px"><button class="mini" data-exrm="${xi}" style="color:#b06a6a">Remove</button></div></div></div>`;return h;
@@ -419,11 +584,12 @@ function renderExtraCard(x,xi){
 function extraSetRow(xi,si,s){return `<tr><td>${si+1}</td><td><input inputmode="numeric" data-exs="reps" data-xi="${xi}" data-i="${si}" value="${esc(s.reps)}" placeholder="–"></td><td><input inputmode="decimal" data-exs="weight" data-xi="${xi}" data-i="${si}" value="${esc(s.weight)}" placeholder="–"></td><td></td></tr>`;}
 function bindExtras(){
   const add=document.getElementById("addExtraBtn");
-  if(add)add.onclick=()=>{extras.push({name:"",kind:"strength",sets:[{reps:"",weight:""}],duration:"",rpe:"",note:""});render();};
+  if(add)add.onclick=()=>{extras.push({name:"",type:"reps",unit:"",sets:[{reps:"",weight:""}],duration:"",rpe:"",note:""});render();};
   document.querySelectorAll("[data-ex]").forEach(el=>{el.oninput=el.onchange=()=>{const xi=+el.dataset.xi;extras[xi][el.dataset.ex]=el.value;updateSaveCount();};});
-  document.querySelectorAll("[data-exkind]").forEach(b=>b.onclick=()=>{const xi=+b.dataset.xi;extras[xi].kind=b.getAttribute("data-exkind");if(extras[xi].kind==='strength'&&!extras[xi].sets.length)extras[xi].sets=[{reps:"",weight:""}];render();});
+  document.querySelectorAll("[data-extype]").forEach(b=>b.onclick=()=>{const xi=+b.dataset.xi;const t=b.getAttribute("data-extype");extras[xi].type=t;if(t!=="cardio"&&(!extras[xi].sets||!extras[xi].sets.length))extras[xi].sets=[{reps:"",weight:""}];if(t==="time"&&!extras[xi].unit)extras[xi].unit="sec";if(t==="distance"&&!extras[xi].unit)extras[xi].unit=guessUnit(extras[xi].name);render();});
   document.querySelectorAll("[data-exs]").forEach(inp=>inp.oninput=()=>{const xi=+inp.dataset.xi;extras[xi].sets[+inp.dataset.i][inp.dataset.exs]=inp.value;updateSaveCount();});
   document.querySelectorAll("[data-exaddset]").forEach(b=>b.onclick=()=>{const xi=+b.getAttribute("data-exaddset");extras[xi].sets.push({reps:"",weight:""});render();});
+  document.querySelectorAll("[data-exunit]").forEach(sel=>sel.onchange=()=>{const xi=+sel.getAttribute("data-exunit");extras[xi].unit=sel.value;render();});
   document.querySelectorAll("[data-exrm]").forEach(b=>b.onclick=()=>{extras.splice(+b.getAttribute("data-exrm"),1);render();});
 }
 
@@ -435,6 +601,21 @@ function updateSaveCount(){
   const sb=document.getElementById("saveBtn");if(sb)sb.disabled=n===0;
 }
 
+function typedRows(base,name,type,unit,sets,note){
+  const out=[];
+  const real=(sets||[]).filter(s=>(s.reps!==""&&s.reps!=null)||(s.weight!==""&&s.weight!=null));
+  if(!real.length){out.push({...base,exercise_name:name,set_number:1,reps:null,weight:null,note:note||null});return out;}
+  real.forEach((s,si)=>{
+    const row={...base,exercise_name:name,set_number:si+1,note:si===0?(note||null):null};
+    const v=s.reps;
+    if(type==="time"){ if((unit||"sec")==="sec")row.duration_sec=numOrNull(v); else row.duration_min=numOrNull(v); row.weight=numOrNull(s.weight); }
+    else if(type==="distance"){ row.distance=numOrNull(v); row.distance_unit=unit||"mi"; row.weight=numOrNull(s.weight); }
+    else if(type==="cal"){ row.calories=numOrNull(v); row.weight=numOrNull(s.weight); }
+    else { row.reps=(v===""||v==null)?null:String(v); row.weight=numOrNull(s.weight); }
+    out.push(row);
+  });
+  return out;
+}
 /* ---------------- save (idempotent per exercise on this date) ---------------- */
 async function saveWorkout(){
   const day=dayForDate(selDate);
@@ -442,23 +623,19 @@ async function saveWorkout(){
   if(day && !day.rest){
     (day.blocks||[]).forEach((b,bi)=>(b.ex||[]).forEach((e,ei)=>{
       const sd=sessionData[exKey(bi,ei)];if(!sd||!hasData(sd))return;
-      const style=exStyle(b,e);
+      let style=exStyle(b,e); if(style==="typed"&&!(e.dose&&(""+e.dose).trim()))style="done";
       const base={athlete_id:athlete.id,athlete_slug:athlete.slug,log_date:date,day_dow:day.dow,day_focus:day.focus||null,block_title:b.title||null,completed:true};
       if(style==="cardio")rows.push({...base,exercise_name:(sd.activity||e.name),set_number:1,reps:null,weight:null,duration_min:sd.duration?parseFloat(sd.duration):null,rpe:sd.rpe?parseFloat(sd.rpe):null,distance:sd.distance?parseFloat(sd.distance):null,distance_unit:sd.distance?(sd.dunit||"mi"):null,note:sd.note||null});
-      else if(style==="sets"){
-        const real=sd.sets.filter(s=>(s.reps!==""&&s.reps!=null)||(s.weight!==""&&s.weight!=null));
-        if(real.length)real.forEach((s,si)=>rows.push({...base,exercise_name:e.name,set_number:si+1,reps:s.reps===""?null:String(s.reps),weight:(s.weight===""||s.weight==null)?null:parseFloat(s.weight),note:si===0?(sd.note||null):null}));
-        else rows.push({...base,exercise_name:e.name,set_number:1,reps:null,weight:null,note:sd.note||null});
-      }else rows.push({...base,exercise_name:e.name,set_number:1,reps:null,weight:null,note:sd.note||null});
+      else if(style==="typed"){const type=exType(e);const unit=sd.unit||exUnit(e)||(type==="distance"?guessUnit(e.name):(type==="time"?"sec":""));typedRows(base,e.name,type,unit,sd.sets,sd.note).forEach(r=>rows.push(r));}
+      else rows.push({...base,exercise_name:e.name,set_number:1,reps:null,weight:null,note:sd.note||null});
     }));
   }
   extras.forEach(x=>{
     if(!extraHasData(x))return;
     const base={athlete_id:athlete.id,athlete_slug:athlete.slug,log_date:date,day_dow:(day&&day.dow)||dowOf(selDate),day_focus:(day&&day.focus)||null,block_title:"Added by athlete",completed:true};
-    if(x.kind==="cardio")rows.push({...base,exercise_name:x.name||"Extra cardio",set_number:1,reps:null,weight:null,duration_min:x.duration?parseFloat(x.duration):null,rpe:x.rpe?parseFloat(x.rpe):null,distance:x.distance?parseFloat(x.distance):null,distance_unit:x.distance?(x.dunit||"mi"):null,note:x.note||null});
-    else{const real=(x.sets||[]).filter(s=>s.reps||s.weight);
-      if(real.length)real.forEach((s,si)=>rows.push({...base,exercise_name:x.name||"Extra",set_number:si+1,reps:s.reps===""?null:String(s.reps),weight:(s.weight===""||s.weight==null)?null:parseFloat(s.weight),note:si===0?(x.note||null):null}));
-      else rows.push({...base,exercise_name:x.name||"Extra",set_number:1,reps:null,weight:null,note:x.note||null});}
+    const xt=x.type||(x.kind==="cardio"?"cardio":"reps");
+    if(xt==="cardio")rows.push({...base,exercise_name:x.name||"Extra cardio",set_number:1,reps:null,weight:null,duration_min:x.duration?parseFloat(x.duration):null,rpe:x.rpe?parseFloat(x.rpe):null,distance:x.distance?parseFloat(x.distance):null,distance_unit:x.distance?(x.dunit||"mi"):null,note:x.note||null});
+    else{const unit=x.unit||(xt==="distance"?guessUnit(x.name):(xt==="time"?"sec":""));typedRows(base,x.name||"Extra",xt,unit,x.sets,x.note).forEach(r=>rows.push(r));}
   });
   if(!rows.length){toast("Nothing to save yet");return;}
   const btn=document.getElementById("saveBtn");btn.disabled=true;btn.textContent="Saving…";
