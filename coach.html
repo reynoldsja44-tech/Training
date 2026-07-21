@@ -536,11 +536,91 @@ function renderBlockEditor(di,bi,b){
   h+=`<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary sm" onclick="openExPicker(${di},${bi})">+ Add from library</button><button class="btn light sm" onclick="addBlankEx(${di},${bi})">+ Blank exercise</button></div></div>`;
   return h;
 }
-function renderExEditor(di,bi,ei,e){
+/* ---------- Structured dose (sets / reps / type) ----------
+   Every exercise keeps a derived `dose` string for the athlete view + backward
+   compat. Structured fields: sets, reps, repType (reps|time|distance|cal),
+   repUnit (sec|min for time; m|km|mi for distance), detail (leftover like
+   "@ 135 lb" or "/ side"). Legacy entries are auto-parsed from `dose` on edit;
+   anything unparseable is preserved verbatim in `detail` (the fallback). */
+const TIME_UNITS=["sec","min"], DIST_UNITS=["m","km","mi"];
+function deriveDose(e){
+  const sets=(e.sets==null?"":(""+e.sets)).trim();
+  const reps=(e.reps==null?"":(""+e.reps)).trim();
+  const t=e.repType||"", unit=e.repUnit||"";
+  const detail=(e.detail==null?"":(""+e.detail)).trim();
+  let core="";
+  if(reps){
+    const unitLabel=(t==="distance"||t==="time")?unit:(t==="cal"?"cal":"");
+    const val=reps+(unitLabel?(" "+unitLabel):"");
+    core=(sets!=="")?(sets+" × "+val):val;
+  } else if(sets!==""){ core=sets+" ×"; }
+  let out=core;
+  if(detail) out=out?(out+" "+detail):detail;
+  return out.trim();
+}
+function parseDose(raw){
+  const out={sets:"",reps:"",repType:"reps",repUnit:"",detail:""};
+  if(!raw||!(""+raw).trim()){ out.repType=""; return out; }
+  let s=(""+raw).trim();
+  const sm=s.match(/^(\d+)\s*[×xX]\s*(.*)$/);
+  if(sm){ out.sets=sm[1]; s=sm[2].trim(); }
+  const vm=s.match(/^(\d+(?:\s*[–\-]\s*\d+)?(?:\.\d+)?)\s*(.*)$/);
+  if(vm){
+    out.reps=vm[1].replace(/\s+/g,"");
+    let rest=vm[2].trim();
+    const um=rest.match(/^(mi|km|m|secs?|s|mins?|cal|reps?|pumps)\b\.?/i);
+    if(um){
+      const u=um[1].toLowerCase();
+      if(u==="mi"){out.repType="distance";out.repUnit="mi";}
+      else if(u==="km"){out.repType="distance";out.repUnit="km";}
+      else if(u==="m"){out.repType="distance";out.repUnit="m";}
+      else if(u==="s"||u.indexOf("sec")===0){out.repType="time";out.repUnit="sec";}
+      else if(u.indexOf("min")===0){out.repType="time";out.repUnit="min";}
+      else if(u==="cal"){out.repType="cal";out.repUnit="";}
+      else {out.repType="reps";}
+      rest=rest.slice(um[0].length).trim();
+    } else { out.repType="reps"; }
+    out.detail=rest;
+  } else { out.sets="";out.reps="";out.repType="";out.detail=s; }
+  return out;
+}
+function ensureStructured(e){
+  if(e && e.repType===undefined){
+    const p=parseDose(e.dose||"");
+    e.sets=p.sets; e.reps=p.reps; e.repType=p.repType; e.repUnit=p.repUnit; e.detail=p.detail;
+  }
+  return e;
+}
+function doseFieldsHTML(setterCall,e){
+  const mk=f=>setterCall.replace("FIELD",f);
+  const t=e.repType||"";
+  const unitOpts=t==="time"?TIME_UNITS:(t==="distance"?DIST_UNITS:[]);
+  const unitSel=unitOpts.length?`<select class="in" style="max-width:66px" onchange="${mk('repUnit')}">${unitOpts.map(u=>`<option ${e.repUnit===u?"selected":""}>${u}</option>`).join("")}</select>`:"";
+  return `<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-top:6px">
+    <input class="in" style="max-width:54px;text-align:center" value="${esc(e.sets==null?"":e.sets)}" placeholder="sets" onchange="${mk('sets')}">
+    <span class="muted">×</span>
+    <input class="in" style="max-width:78px;text-align:center" value="${esc(e.reps==null?"":e.reps)}" placeholder="reps" onchange="${mk('reps')}">
+    <select class="in" style="max-width:88px" onchange="${mk('repType')}">
+      <option value="reps" ${t==="reps"||t===""?"selected":""}>reps</option>
+      <option value="time" ${t==="time"?"selected":""}>time</option>
+      <option value="distance" ${t==="distance"?"selected":""}>dist</option>
+      <option value="cal" ${t==="cal"?"selected":""}>cal</option>
+    </select>${unitSel}
+    <input class="in" style="min-width:120px;flex:1" value="${esc(e.detail==null?"":e.detail)}" placeholder="extra — e.g. @ 135 lb, / side" onchange="${mk('detail')}"></div>`;
+}
+function applyDoseField(e,f,v){
+  e[f]=v;
+  if(f==="repType"&&(v==="time"||v==="distance")&&!e.repUnit){ e.repUnit=(v==="time"?"sec":"m"); }
+  if(f==="repType"&&(v==="reps"||v==="cal")){ e.repUnit=""; }
+  e.dose=deriveDose(e);
+}
+function setExF(di,bi,ei,f,v){ const e=curDays()[di].blocks[bi].ex[ei]; applyDoseField(e,f,v); if(f==="repType")renderEditor(); }
+function gSetF(i,f,v){ const e=editingGroup.items[i]; applyDoseField(e,f,v); if(f==="repType")renderGroupEditor(); }
+function renderExEditor(di,bi,ei,e){ ensureStructured(e);
   return `<div class="ex"><div class="reorder"><button title="Move up" onclick="moveEx(${di},${bi},${ei},-1)">▲</button><button title="Move down" onclick="moveEx(${di},${bi},${ei},1)">▼</button></div>
-    <div class="grow"><div class="row2">
+    <div class="grow">
       <input class="in" value="${esc(e.name||"")}" placeholder="Exercise name" onchange="setEx(${di},${bi},${ei},'name',this.value)">
-      <input class="in" style="max-width:130px" value="${esc(e.dose||"")}" placeholder="Sets×reps / dose" onchange="setEx(${di},${bi},${ei},'dose',this.value)"></div>
+      ${doseFieldsHTML(`setExF(${di},${bi},${ei},'FIELD',this.value)`,e)}
       <input class="in" style="margin-top:6px" value="${esc(e.cue||"")}" placeholder="Form cue (shown to athlete)" onchange="setEx(${di},${bi},${ei},'cue',this.value)">
       <input class="in" style="margin-top:6px" value="${esc(e.coachNote||"")}" placeholder="Coach note (your guidance)" onchange="setEx(${di},${bi},${ei},'coachNote',this.value)"></div>
     <div style="display:flex;flex-direction:column;gap:5px"><button class="btn ghost sm" title="Save to library" onclick="exToLibrary(${di},${bi},${ei})">★</button><button class="btn danger sm" onclick="delEx(${di},${bi},${ei})">✕</button></div></div>`;
@@ -554,7 +634,7 @@ function moveDay(di,dir){const a=editing.program.days,j=di+dir;if(j<0||j>=a.leng
 function addBlock(di){const day=curDays()[di];day.rest=false;(day.blocks=day.blocks||[]).push({kind:"strength",tag:"Strength",title:"New block",sub:"",ex:[]});renderEditor();}
 function delBlk(di,bi){curDays()[di].blocks.splice(bi,1);renderEditor();}
 function moveBlk(di,bi,dir){const a=curDays()[di].blocks,j=bi+dir;if(j<0||j>=a.length)return;[a[bi],a[j]]=[a[j],a[bi]];renderEditor();}
-function addBlankEx(di,bi){const day=curDays()[di];day.rest=false;const b=day.blocks[bi];(b.ex=b.ex||[]).push({name:"",dose:"",cue:"",coachNote:""});renderEditor();}
+function addBlankEx(di,bi){const day=curDays()[di];day.rest=false;const b=day.blocks[bi];(b.ex=b.ex||[]).push({name:"",dose:"",cue:"",coachNote:"",sets:"",reps:"",repType:"reps",repUnit:"",detail:""});renderEditor();}
 function delEx(di,bi,ei){curDays()[di].blocks[bi].ex.splice(ei,1);renderEditor();}
 function moveEx(di,bi,ei,dir){const a=curDays()[di].blocks[bi].ex,j=ei+dir;if(j<0||j>=a.length)return;[a[ei],a[j]]=[a[j],a[ei]];renderEditor();}
 async function exToLibrary(di,bi,ei){
@@ -768,13 +848,30 @@ function renderLibraryScreen(){
 }
 function libAddForm(){libForm(null);}
 function libEditForm(id){libForm(library.find(e=>e.id===id));}
+function unitOptsHTML(t,u){const opts=t==="time"?TIME_UNITS:(t==="distance"?DIST_UNITS:[]);return opts.map(x=>`<option ${u===x?"selected":""}>${x}</option>`).join("");}
+function libTypeChange(){const t=document.getElementById("lfType").value;const un=document.getElementById("lfUnit");if(t==="time"||t==="distance"){un.style.display="";un.innerHTML=unitOptsHTML(t,un.value);}else{un.style.display="none";un.innerHTML="";}}
 function libForm(e){
   const ed=e||{name:"",kind:"strength",dose:"",cue:"",note:"",category:""};
+  const pd=parseDose(ed.dose||"");
   const cats=libCategories();
+  const showUnit=(pd.repType==="time"||pd.repType==="distance");
   let h=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-h"><h3>${e?"Edit":"New"} exercise</h3><button class="btn ghost sm" onclick="closeModal()">Close</button></div><div class="modal-b">
     <label class="fld"><span>Name</span><input class="in" id="lfName" value="${esc(ed.name)}"></label>
-    <div class="row2"><label class="fld"><span>Kind</span><select class="in" id="lfKind">${KINDS.map(k=>`<option ${ed.kind===k?"selected":""}>${k}</option>`).join("")}</select></label>
-    <label class="fld"><span>Default dose</span><input class="in" id="lfDose" value="${esc(ed.dose||"")}" placeholder="3 × 10"></label></div>
+    <label class="fld"><span>Kind</span><select class="in" id="lfKind">${KINDS.map(k=>`<option ${ed.kind===k?"selected":""}>${k}</option>`).join("")}</select></label>
+    <label class="fld"><span>Default prescription</span>
+      <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+        <input class="in" id="lfSets" style="max-width:54px;text-align:center" value="${esc(pd.sets)}" placeholder="sets">
+        <span class="muted">×</span>
+        <input class="in" id="lfReps" style="max-width:78px;text-align:center" value="${esc(pd.reps)}" placeholder="reps">
+        <select class="in" id="lfType" style="max-width:88px" onchange="libTypeChange()">
+          <option value="reps" ${pd.repType==="reps"||pd.repType===""?"selected":""}>reps</option>
+          <option value="time" ${pd.repType==="time"?"selected":""}>time</option>
+          <option value="distance" ${pd.repType==="distance"?"selected":""}>dist</option>
+          <option value="cal" ${pd.repType==="cal"?"selected":""}>cal</option>
+        </select>
+        <select class="in" id="lfUnit" style="max-width:66px;${showUnit?"":"display:none"}">${unitOptsHTML(pd.repType,pd.repUnit)}</select>
+        <input class="in" id="lfDetail" style="min-width:120px;flex:1" value="${esc(pd.detail)}" placeholder="extra — e.g. @ 135 lb, / side">
+      </div></label>
     <label class="fld"><span>Category (for filtering)</span><input class="in" id="lfCat" list="catlist" value="${esc(ed.category||"")}" placeholder="e.g. crossfit, hyrox, accessory"><datalist id="catlist">${cats.map(c=>`<option value="${esc(c)}">`).join("")}</datalist></label>
     <label class="fld"><span>Form cue</span><input class="in" id="lfCue" value="${esc(ed.cue||"")}"></label>
     <label class="fld"><span>Default coach note</span><input class="in" id="lfNote" value="${esc(ed.note||"")}"></label>
@@ -782,7 +879,9 @@ function libForm(e){
   </div></div></div>`;document.getElementById("modalRoot").innerHTML=h;
 }
 async function libSave(id){
-  const rec={name:document.getElementById("lfName").value.trim(),kind:document.getElementById("lfKind").value,dose:document.getElementById("lfDose").value||null,cue:document.getElementById("lfCue").value||null,note:document.getElementById("lfNote").value||null,category:document.getElementById("lfCat").value.trim()||null};
+  const lt=document.getElementById("lfType").value;
+  const dobj={sets:document.getElementById("lfSets").value.trim(),reps:document.getElementById("lfReps").value.trim(),repType:lt,repUnit:(lt==="time"||lt==="distance")?document.getElementById("lfUnit").value:"",detail:document.getElementById("lfDetail").value.trim()};
+  const rec={name:document.getElementById("lfName").value.trim(),kind:document.getElementById("lfKind").value,dose:deriveDose(dobj)||null,cue:document.getElementById("lfCue").value||null,note:document.getElementById("lfNote").value||null,category:document.getElementById("lfCat").value.trim()||null};
   if(!rec.name){toast("Name required",true);return;}
   try{if(id)await DB.libUpdate(id,rec);else await DB.libCreate(rec);library=await DB.libList();closeModal();renderLibraryScreen();toast("Saved ✓");}
   catch(e){toast(/duplicate|unique/i.test(e.message)?"Name already in library":"Save failed",true);}
@@ -823,17 +922,17 @@ function renderGroupEditor(){
   document.getElementById("gKind").onchange=e=>editingGroup.kind=e.target.value;
   document.getElementById("gTag").onchange=e=>editingGroup.tag=e.target.value;
 }
-function renderGroupItem(i,e){
+function renderGroupItem(i,e){ ensureStructured(e);
   return `<div class="ex"><div class="reorder"><button title="Up" onclick="gMove(${i},-1)">▲</button><button title="Down" onclick="gMove(${i},1)">▼</button></div>
-   <div class="grow"><div class="row2">
+   <div class="grow">
      <input class="in" value="${esc(e.name||"")}" placeholder="Exercise name" onchange="gSet(${i},'name',this.value)">
-     <input class="in" style="max-width:130px" value="${esc(e.dose||"")}" placeholder="Sets×reps / dose" onchange="gSet(${i},'dose',this.value)"></div>
+     ${doseFieldsHTML(`gSetF(${i},'FIELD',this.value)`,e)}
      <input class="in" style="margin-top:6px" value="${esc(e.cue||"")}" placeholder="Form cue" onchange="gSet(${i},'cue',this.value)">
      <input class="in" style="margin-top:6px" value="${esc(e.coachNote||"")}" placeholder="Coach note" onchange="gSet(${i},'coachNote',this.value)"></div>
    <button class="btn danger sm" onclick="gDel(${i})">✕</button></div>`;
 }
 function gSet(i,f,v){editingGroup.items[i][f]=v;}
-function gAddBlank(){editingGroup.items.push({name:"",dose:"",cue:"",coachNote:""});renderGroupEditor();}
+function gAddBlank(){editingGroup.items.push({name:"",dose:"",cue:"",coachNote:"",sets:"",reps:"",repType:"reps",repUnit:"",detail:""});renderGroupEditor();}
 function gDel(i){editingGroup.items.splice(i,1);renderGroupEditor();}
 function gMove(i,dir){const a=editingGroup.items,j=i+dir;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];renderGroupEditor();}
 async function gAddFromLib(){if(!library.length){try{library=await DB.libList();}catch(e){}}gPickKind="";renderGroupPicker("","");}
