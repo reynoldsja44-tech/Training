@@ -657,7 +657,9 @@ async function saveWorkout(){
   try{
     const names=[...new Set(rows.map(r=>r.exercise_name))];
     for(const nm of names){try{await DB.deleteLogsFor(athlete.slug,date,nm);}catch(_){}}
-    await DB.insertLogs(rows);
+    const LOG_COLS=["athlete_id","athlete_slug","log_date","day_dow","day_focus","block_title","exercise_name","set_number","reps","weight","weight_unit","completed","note","duration_min","rpe","distance","distance_unit","calories","duration_sec"];
+    const normRows=rows.map(r=>{const o={};LOG_COLS.forEach(c=>{o[c]=(r[c]===undefined?null:r[c]);});return o;});
+    await DB.insertLogs(normRows);
     logs=await DB.getLogs(SLUG);sessionData={};extras=[];backfill=false;toast("Saved ✓");render();
   }catch(e){toast("Save failed — try again",true);console.error(e);btn.disabled=false;}
   btn.textContent="Save workout";
