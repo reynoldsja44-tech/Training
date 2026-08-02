@@ -72,6 +72,8 @@
   .done-btn svg{width:16px;height:16px;opacity:0;transform:scale(.5);transition:.15s;}
   .exwrap.done .done-btn{background:var(--ok);border-color:var(--ok);}
   .exwrap.done .done-btn svg{opacity:1;transform:scale(1);}
+  .exwrap.haslog{box-shadow:inset 3px 0 0 var(--ok);background:#f3faf4;border-radius:10px;}
+  .logged-badge.saved{background:#e2f3e5;color:#2f6e3e;}
   .ex-name{font-weight:600;font-size:18px;line-height:1.25;}
   .ex-dose{display:inline-block;font-size:15px;font-weight:700;color:var(--strength);background:#eaf1f8;border-radius:7px;padding:1px 8px;margin-top:4px;}
   .block.cardio .ex-dose{color:var(--cardio);background:#e3f2f0;}
@@ -281,6 +283,7 @@ function rowVal(r){
 }
 function summarizeRows(rows){
   if(!rows||!rows.length)return"";
+  if(rows.every(r=>r.completed&&r.reps==null&&r.weight==null&&r.duration_min==null&&r.duration_sec==null&&r.distance==null&&r.calories==null))return"done as prescribed";
   const r0=rows[0];
   const nonRep = r0.duration_min!=null||r0.duration_sec!=null||r0.distance!=null||r0.calories!=null;
   if(nonRep && rows.length===1){
@@ -384,6 +387,11 @@ function loggedRow(l){
   if(l.distance!=null){parts.push(fld("dist","distance",l.distance,'style="width:52px"'));const uopts=DIST_UNITS.map(u=>`<option value="${u}" ${(l.distance_unit||"mi")===u?"selected":""}>${u}</option>`).join("");parts.push(`<select data-h="distance_unit" style="font-size:12px">${uopts}</select>`);}
   if(l.calories!=null)parts.push(fld("cal","calories",l.calories));
   if(l.rpe!=null)parts.push(fld("RPE","rpe",l.rpe));
+  if(!parts.length&&l.completed){
+    let h0=`<div class="hist-row" data-id="${l.id}"><span class="hx">${esc(l.exercise_name)}</span><span style="font-size:12px;color:#3c8c50;font-weight:600">✓ as prescribed</span>`;
+    h0+=`<button class="del" data-del="${l.id}">🗑</button>${l.note?`<div class="hnote">📝 ${esc(l.note)}</div>`:""}</div>`;
+    return h0;
+  }
   if(!parts.length)parts.push(fld("reps","reps",l.reps),fld("lb","weight",l.weight));
   const showSet=(l.set_number!=null)&&(l.reps!=null||l.weight!=null||l.distance!=null||l.calories!=null||l.duration_sec!=null);
   let h=`<div class="hist-row" data-id="${l.id}"><span class="hx">${esc(l.exercise_name)}${showSet?` <span style="color:#6b7884;font-weight:400">· set ${l.set_number}</span>`:""}</span>`;
@@ -412,6 +420,30 @@ function renderExercise(block,bi,e,ei,dateLogs){
   let style=exStyle(block,e);
   const prog=(e.metrics&&e.metrics.length)?e.metrics.slice():[];
   if(style==="typed" && !prog.length && !(e.dose&&(""+e.dose).trim())) style="done";
+  const savedRows=loggedForExOnDate(e.name,selDate);
+  if(savedRows.length && !sd._hydrated){
+    sd._hydrated=true; sd.done=true;
+    const noteRow=savedRows.find(r=>r.note); if(noteRow&&!sd.note)sd.note=noteRow.note;
+    if(style==="cardio"){
+      const r0=savedRows[0];
+      sd.activity=r0.exercise_name||e.name;
+      if(r0.duration_min!=null)sd.duration=String(r0.duration_min);
+      if(r0.rpe!=null)sd.rpe=String(r0.rpe);
+      if(r0.distance!=null){sd.distance=String(r0.distance);sd.dunit=r0.distance_unit||sd.dunit;}
+      sd._init=true;
+    } else if(style==="typed"){
+      const dataRows=savedRows.filter(r=>r.reps!=null||r.weight!=null||r.duration_sec!=null||r.duration_min!=null||r.distance!=null||r.calories!=null);
+      if(dataRows.length){
+        const ms=[];
+        dataRows.forEach(r=>{if(r.reps!=null&&!ms.includes("reps"))ms.push("reps");if(r.weight!=null&&!ms.includes("weight"))ms.push("weight");if((r.duration_sec!=null||r.duration_min!=null)&&!ms.includes("time"))ms.push("time");if(r.distance!=null&&!ms.includes("distance"))ms.push("distance");if(r.calories!=null&&!ms.includes("cal"))ms.push("cal");});
+        sd.metrics=canonMetrics([...(prog||[]),...ms]);
+        if(dataRows.some(r=>r.duration_sec!=null))sd.timeUnit="sec";else if(dataRows.some(r=>r.duration_min!=null))sd.timeUnit="min";
+        const du=dataRows.find(r=>r.distance_unit); if(du)sd.distUnit=du.distance_unit;
+        sd.sets=dataRows.map(r=>({reps:r.reps==null?"":String(r.reps),weight:r.weight==null?"":String(r.weight),time:r.duration_sec!=null?String(r.duration_sec):(r.duration_min!=null?String(r.duration_min):""),dist:r.distance==null?"":String(r.distance),cal:r.calories==null?"":String(r.calories)}));
+        sd._init=true;
+      }
+    }
+  }
   if(style==="typed"){
     if(!sd.metrics)sd.metrics=prog.length?prog.slice():["reps"];
     if(sd.timeUnit==null)sd.timeUnit=e.timeUnit||"sec";
@@ -423,15 +455,15 @@ function renderExercise(block,bi,e,ei,dateLogs){
     }
   }
   if(style==="cardio" && !sd._init){sd.activity=e.name;sd._init=true;}
-  const already=loggedForExOnDate(e.name,selDate);
-  let h=`<div class="exwrap ${sd.done?"done":""}" data-key="${key}">`;
+  const already=savedRows;
+  let h=`<div class="exwrap ${sd.done?"done":""} ${already.length?"haslog":""}" data-key="${key}">`;
   h+=`<div class="exrow"><div class="done-btn" data-done="${key}">${checkSVG}</div><div style="flex:1;min-width:0">`;
   h+=`<div class="ex-name">${esc(e.name)}</div>`;
   if(e.dose)h+=`<span class="ex-dose">${esc(e.dose)}</span>`;
   if(e.cue)h+=`<div class="ex-cue">${e.cue}</div>`;
   if(e.coachNote)h+=`<div class="ex-coachnote"><b>Coach:</b> ${esc(e.coachNote)}</div>`;
   const lt=fmtLast(e.name);if(lt)h+=`<div class="lastval">⟲ ${esc(lt)}</div>`;
-  if(already.length){h+=`<div class="logged-badge">✓ Logged this day: ${esc(summarizeRows(already))} — re-saving replaces it</div>`;}
+  if(already.length){h+=`<div class="logged-badge saved">✓ Saved: ${esc(summarizeRows(already))} — edits here update it on next save</div>`;}
   if(style==="typed"){ h+=metricTable(key,sd); }
   else if(style==="cardio"){ h+=renderCardioFields(key,sd,e); }
   h+=`<textarea class="exnote" data-note="${key}" placeholder="Note (how it felt, any tweak)…">${esc(sd.note)}</textarea>`;
@@ -469,10 +501,16 @@ function setRow(key,si,s,cols){
   const cell=m=>{const f=METRIC_FIELD[m];const mode=(m==="weight"||m==="distance")?"decimal":"numeric";return `<td><input inputmode="${mode}" data-f="${f}" data-k="${key}" data-i="${si}" value="${esc(s[f]==null?"":s[f])}" placeholder="–"></td>`;};
   return `<tr data-row="${si}"><td>${si+1}</td>${cols.map(cell).join("")}<td><button class="rm" data-rmset="${key}" data-i="${si}">×</button></td></tr>`;
 }
+function autoCheck(k,val){
+  if(val==null||String(val).trim()==="")return;
+  const sd=sessionData[k];if(!sd||sd.done)return;sd.done=true;
+  const w=document.querySelector(`.exwrap[data-key="${k}"]`);if(w)w.classList.add("done");
+  updateSaveCount();
+}
 function bindExercises(){
   document.querySelectorAll("[data-done]").forEach(el=>el.onclick=()=>{const k=el.getAttribute("data-done");sessionData[k].done=!sessionData[k].done;el.closest(".exwrap").classList.toggle("done",sessionData[k].done);updateSaveCount();});
-  document.querySelectorAll("input[data-f]").forEach(inp=>inp.oninput=()=>{const k=inp.dataset.k;sessionData[k].sets[+inp.dataset.i][inp.dataset.f]=inp.value;sessionData[k].touched=true;updateSaveCount();});
-  document.querySelectorAll("[data-cf]").forEach(inp=>inp.oninput=inp.onchange=()=>{const k=inp.dataset.k;sessionData[k][inp.dataset.cf]=inp.value;sessionData[k].touched=true;updateSaveCount();});
+  document.querySelectorAll("input[data-f]").forEach(inp=>inp.oninput=()=>{const k=inp.dataset.k;sessionData[k].sets[+inp.dataset.i][inp.dataset.f]=inp.value;sessionData[k].touched=true;autoCheck(k,inp.value);updateSaveCount();});
+  document.querySelectorAll("[data-cf]").forEach(inp=>inp.oninput=inp.onchange=()=>{const k=inp.dataset.k;sessionData[k][inp.dataset.cf]=inp.value;sessionData[k].touched=true;if(inp.dataset.cf==="duration"||inp.dataset.cf==="distance"||inp.dataset.cf==="rpe")autoCheck(k,inp.value);updateSaveCount();});
   document.querySelectorAll("textarea[data-note]").forEach(t=>t.oninput=()=>{sessionData[t.dataset.note].note=t.value;updateSaveCount();});
   document.querySelectorAll("[data-addset]").forEach(b=>b.onclick=()=>{const k=b.getAttribute("data-addset");const sets=sessionData[k].sets;const ls=sets[sets.length-1]||{};sets.push({reps:ls.reps||"",weight:ls.weight||"",time:ls.time||"",dist:ls.dist||"",cal:ls.cal||""});sessionData[k].touched=true;redrawSets(k);updateSaveCount();});
   document.querySelectorAll("[data-rmset]").forEach(b=>b.onclick=()=>{const k=b.getAttribute("data-rmset");if(sessionData[k].sets.length<=1)return;sessionData[k].sets.splice(+b.dataset.i,1);redrawSets(k);updateSaveCount();});
@@ -481,7 +519,7 @@ function bindExercises(){
   document.querySelectorAll("[data-addmetric]").forEach(sel=>sel.onchange=()=>{const k=sel.getAttribute("data-addmetric");if(!sel.value)return;const sd=sessionData[k];sd.metrics=canonMetrics((sd.metrics||[]).concat(sel.value));if(sel.value==="distance"&&sd.distUnit==null)sd.distUnit=guessUnit("");if(sel.value==="time"&&sd.timeUnit==null)sd.timeUnit="sec";sd.touched=true;render();});
 }
 function rebindSetControls(k){
-  document.querySelectorAll(`input[data-k="${k}"][data-f]`).forEach(inp=>inp.oninput=()=>{sessionData[k].sets[+inp.dataset.i][inp.dataset.f]=inp.value;sessionData[k].touched=true;updateSaveCount();});
+  document.querySelectorAll(`input[data-k="${k}"][data-f]`).forEach(inp=>inp.oninput=()=>{sessionData[k].sets[+inp.dataset.i][inp.dataset.f]=inp.value;sessionData[k].touched=true;autoCheck(k,inp.value);updateSaveCount();});
   document.querySelectorAll(`[data-rmset="${k}"]`).forEach(b=>b.onclick=()=>{if(sessionData[k].sets.length<=1)return;sessionData[k].sets.splice(+b.dataset.i,1);redrawSets(k);updateSaveCount();});
 }
 function redrawSets(k){const tb=document.querySelector(`[data-sets="${k}"]`);if(!tb)return;const cols=(sessionData[k].metrics&&sessionData[k].metrics.length)?sessionData[k].metrics:["reps"];tb.innerHTML=sessionData[k].sets.map((s,si)=>setRow(k,si,s,cols)).join("");rebindSetControls(k);}
@@ -660,7 +698,7 @@ async function saveWorkout(){
     const LOG_COLS=["athlete_id","athlete_slug","log_date","day_dow","day_focus","block_title","exercise_name","set_number","reps","weight","weight_unit","completed","note","duration_min","rpe","distance","distance_unit","calories","duration_sec"];
     const normRows=rows.map(r=>{const o={};LOG_COLS.forEach(c=>{o[c]=(r[c]===undefined?null:r[c]);});return o;});
     await DB.insertLogs(normRows);
-    logs=await DB.getLogs(SLUG);sessionData={};extras=[];backfill=false;toast("Saved ✓");render();
+    logs=await DB.getLogs(SLUG);backfill=false;btn.disabled=false;toast("Saved ✓ — keep going, re-saving updates it");render();
   }catch(e){toast("Save failed — try again",true);console.error(e);btn.disabled=false;}
   btn.textContent="Save workout";
 }
