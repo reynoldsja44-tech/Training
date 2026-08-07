@@ -74,6 +74,13 @@
   .exwrap.done .done-btn svg{opacity:1;transform:scale(1);}
   .exwrap.haslog{box-shadow:inset 3px 0 0 var(--ok);background:#f3faf4;border-radius:10px;}
   .logged-badge.saved{background:#e2f3e5;color:#2f6e3e;}
+  .blk-tools{display:flex;gap:4px;margin-right:6px;}
+  .blk-tools button{border:1px solid var(--line,#ddd);background:#fff;border-radius:8px;min-width:30px;height:30px;font-size:14px;line-height:1;padding:0 6px;color:#555;}
+  .blk-tools button:active{background:#eee;}
+  .blk-move{display:flex;gap:6px;align-items:center;padding:8px 14px;background:#f2f0fa;border-bottom:1px solid var(--line,#e5e2ef);font-size:14px;}
+  .blk-move input[type=date]{flex:1;min-width:0;padding:6px 8px;border:1px solid #cfcadf;border-radius:8px;font-size:15px;background:#fff;}
+  .blk-move button{padding:7px 12px;border-radius:8px;border:1px solid #cfcadf;background:#fff;font-size:14px;}
+  .blk-move button.go{background:var(--navy,#27427c);color:#fff;border-color:var(--navy,#27427c);}
   .ex-name{font-weight:600;font-size:18px;line-height:1.25;}
   .ex-dose{display:inline-block;font-size:15px;font-weight:700;color:var(--strength);background:#eaf1f8;border-radius:7px;padding:1px 8px;margin-top:4px;}
   .block.cardio .ex-dose{color:var(--cardio);background:#e3f2f0;}
@@ -257,6 +264,60 @@ function ensureMetrics(e){
 function mUnit(src,m){return m==="time"?(src.timeUnit||"sec"):(m==="distance"?(src.distUnit||"mi"):"");}
 function mHeader(src,m){const u=mUnit(src,m);const base=m==="reps"?"Reps":m==="weight"?"Weight (lb)":m==="time"?"Time":m==="distance"?"Distance":"Calories";return base+(u?` (${u})`:"");}
 function programForDow(dow){return (program.days||[]).find(d=>d.dow===dow);}
+function stripNum(t){return String(t||"").replace(/^\d+\.\s*/,"");}
+function renumberBlocks(blocks){blocks.forEach(function(b,i){if(/^\d+\.\s/.test(b.title||""))b.title=(i+1)+". "+stripNum(b.title);});}
+function resolvedDayCopy(ds){
+  const day=dayForDate(ds);
+  if(!day)return{focus:"",badge:"",note:"",rest:false,blocks:[]};
+  const c=JSON.parse(JSON.stringify(day));delete c._override;delete c.dow;
+  if(!c.blocks)c.blocks=[];
+  return c;
+}
+async function saveOverrides(){
+  try{await DB.updateAthlete(athlete.id,{overrides:athlete.overrides});return true;}
+  catch(e){toast("Change failed to save",true);return false;}
+}
+async function blkDelete(bi){
+  if(!confirm("Remove this block from this day only?"))return;
+  const d=resolvedDayCopy(selDate);d.blocks.splice(bi,1);renumberBlocks(d.blocks);
+  athlete.overrides=athlete.overrides||{};athlete.overrides[selDate]=d;
+  if(await saveOverrides()){toast("Removed for this day");render();}
+}
+async function blkShift(bi,dir){
+  const d=resolvedDayCopy(selDate);const j=bi+dir;
+  if(j<0||j>=d.blocks.length)return;
+  const t=d.blocks[bi];d.blocks[bi]=d.blocks[j];d.blocks[j]=t;
+  renumberBlocks(d.blocks);
+  athlete.overrides=athlete.overrides||{};athlete.overrides[selDate]=d;
+  if(await saveOverrides())render();
+}
+function blkMoveOpen(bi){const el=document.getElementById("bmv_"+bi);if(el)el.hidden=!el.hidden;}
+async function blkMoveGo(bi){
+  const inp=document.getElementById("bmvd_"+bi);
+  const target=inp&&inp.value;
+  if(!target)return;
+  if(target===selDate){toast("That is this day",true);return;}
+  const srcD=resolvedDayCopy(selDate);
+  const blk=srcD.blocks.splice(bi,1)[0];
+  renumberBlocks(srcD.blocks);
+  const dst=resolvedDayCopy(target);
+  dst.blocks.push(blk);renumberBlocks(dst.blocks);
+  athlete.overrides=athlete.overrides||{};
+  athlete.overrides[selDate]=srcD;athlete.overrides[target]=dst;
+  if(await saveOverrides()){toast("Moved to "+target+" (this date only)");render();}
+}
+function blkToolsHtml(bi,n){
+  return '<div class="blk-tools" onclick="event.stopPropagation()">'
+    +(bi>0?'<button title="Move up" onclick="blkShift('+bi+',-1)">↑</button>':'')
+    +(bi<n-1?'<button title="Move down" onclick="blkShift('+bi+',1)">↓</button>':'')
+    +'<button title="Move to another date" onclick="blkMoveOpen('+bi+')">📅</button>'
+    +'<button title="Remove from this day" onclick="blkDelete('+bi+')">✕</button></div>';
+}
+function blkMoveRowHtml(bi){
+  const t=new Date(selDate+"T12:00:00");t.setDate(t.getDate()+1);
+  const tom=isoOf(t);
+  return '<div class="blk-move" id="bmv_'+bi+'" hidden onclick="event.stopPropagation()">Move to: <input type="date" id="bmvd_'+bi+'" value="'+tom+'"><button class="go" onclick="blkMoveGo('+bi+')">Move</button><button onclick="blkMoveOpen('+bi+')">Cancel</button></div>';
+}
 function dayForDate(date){
   const ov=(athlete&&athlete.overrides)?athlete.overrides[date]:null;
   if(ov&&(ov.rest||(ov.blocks&&ov.blocks.length)||(ov.focus&&String(ov.focus).trim())||(ov.note&&String(ov.note).trim())))return Object.assign({},ov,{dow:dowOf(date),_override:true});
@@ -358,13 +419,15 @@ function render(){
   if(day.note)html+=`<div class="note-line">${esc(day.note)}</div>`;
   const hasEx=(day.blocks||[]).some(b=>(b.ex||[]).length>0);
   if(day.rest && !hasEx){
-    html+=`<div class="block accessory"><div class="rest-day"><div class="big">Rest day</div>${esc((day.blocks[0]&&day.blocks[0].note)||"Enjoy the recovery.")}</div></div>`;
+    html+=`<div class="block accessory"><div class="rest-day"><div class="big">Rest day</div>${esc((day.blocks&&day.blocks[0]&&day.blocks[0].note)||day.note||"Enjoy the recovery.")}</div></div>`;
     html+=renderExtras();app.innerHTML=html;bindExtras();document.getElementById("savebar").style.display="block";updateSaveCount();return;
   }
+  const canEdit=selDate>=todayISO();
+  const nBlocks=(day.blocks||[]).length;
   (day.blocks||[]).forEach((b,bi)=>{
     const ck=clpKey("b"+bi),isC=!!collapsed[ck];
     const nEx=(b.ex||[]).length;
-    html+=`<div class="block ${esc(b.kind||"strength")} ${isC?"clps":""}"><div class="block-head" onclick="toggleBlock('${ck}',this)"><div style="flex:1;min-width:0"><div class="tag">${esc(b.tag||b.kind||"")}</div><h3>${esc(b.title||"")}</h3>${b.sub?`<div class="sub">${esc(b.sub)}</div>`:""}</div><div class="clp-right"><span class="clp-count">${nEx}</span><span class="caret">▾</span></div></div><div class="block-body">`;
+    html+=`<div class="block ${esc(b.kind||"strength")} ${isC?"clps":""}"><div class="block-head" onclick="toggleBlock('${ck}',this)"><div style="flex:1;min-width:0"><div class="tag">${esc(b.tag||b.kind||"")}</div><h3>${esc(b.title||"")}</h3>${b.sub?`<div class="sub">${esc(b.sub)}</div>`:""}</div>${canEdit?blkToolsHtml(bi,nBlocks):""}<div class="clp-right"><span class="clp-count">${nEx}</span><span class="caret">▾</span></div></div>${canEdit?blkMoveRowHtml(bi):""}<div class="block-body">`;
     if(b.note)html+=`<div class="bnote plain">${esc(b.note)}</div>`;
     if(b.noteBone)html+=`<div class="bnote">🦴 ${esc(b.noteBone)}</div>`;
     if(b.noteWarn)html+=`<div class="bnote warn">⚠︎ ${esc(b.noteWarn)}</div>`;
