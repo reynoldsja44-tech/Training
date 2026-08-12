@@ -436,16 +436,18 @@ function renderCalDetail(ds){
   const ov=overrideFor(ds);
   if(ov){
     let h=`<h3>${esc(nice)} <span class="pill" style="background:#efe9f5;color:#6a4f8f">★ custom for this date</span></h3>`;
-    if(ov.rest)h+=`<div class="muted">Rest day.</div>`;
-    else{h+=`<div class="muted" style="margin-bottom:8px">${esc(ov.focus||"")}</div>`;if(ov.note)h+=`<div class="muted" style="margin-bottom:8px">📝 ${esc(ov.note)}</div>`;(ov.blocks||[]).forEach(b=>{h+=`<div class="logday"><h4>${esc(b.title||b.tag||"Block")}</h4>`;(b.ex||[]).forEach(e=>{h+=`<div class="logrow"><span class="lx">${esc(e.name)}</span><span class="v">${esc(e.dose||"")}</span></div>`;});h+=`</div>`;});}
+    const ovHasEx=(ov.blocks||[]).some(b=>(b.ex||[]).length>0);
+    if(ov.rest&&!ovHasEx)h+=`<div class="muted">Rest day.${ov.note?" \ud83d\udcdd "+esc(ov.note):""}</div>`;
+    else{if(ov.rest)h+=`<div class="muted">Rest day + the work below.</div>`;h+=`<div class="muted" style="margin-bottom:8px">${esc(ov.focus||"")}</div>`;if(ov.note)h+=`<div class="muted" style="margin-bottom:8px">📝 ${esc(ov.note)}</div>`;(ov.blocks||[]).forEach(b=>{h+=`<div class="logday"><h4>${esc(b.title||b.tag||"Block")}</h4>`;(b.ex||[]).forEach(e=>{h+=`<div class="logrow"><span class="lx">${esc(e.name)}</span><span class="v">${esc(e.dose||"")}</span></div>`;});h+=`</div>`;});}
     h+=`<div style="margin-top:10px"><button class="btn light sm" onclick="editDateOverride('${ds}')">Edit this date</button></div>`;
     return h;
   }
   const pd=programForDow(DOW_OF[dObj.getDay()]);
   const addBtn=!past?`<div style="margin-top:10px"><button class="btn light sm" onclick="editDateOverride('${ds}')">★ Add a one-off for this date</button></div>`:"";
   if(!pd)return `<h3>${esc(nice)}</h3><div class="muted">${past?"Nothing was logged this day.":"No workout scheduled for this weekday."}</div>${addBtn}`;
-  if(pd.rest)return `<h3>${esc(nice)} <span class="pill planned">${past?"":"planned"}</span></h3><div class="muted">Rest day.</div>${addBtn}`;
-  let h=`<h3>${esc(nice)} <span class="pill ${past?'':'planned'}">${past?"not logged":"planned"}</span></h3><div class="muted" style="margin-bottom:8px">${esc(pd.focus||"")}</div>`;
+  const pdHasEx=(pd.blocks||[]).some(b=>(b.ex||[]).length>0);
+  if(pd.rest&&!pdHasEx)return `<h3>${esc(nice)} <span class="pill planned">${past?"":"planned"}</span></h3><div class="muted">Rest day.</div>${addBtn}`;
+  let h=`<h3>${esc(nice)} <span class="pill ${past?'':'planned'}">${past?"not logged":"planned"}</span></h3><div class="muted" style="margin-bottom:8px">${esc(pd.focus||"")}${pd.rest?" \u00b7 rest day + the work below":""}</div>`;
   (pd.blocks||[]).forEach(b=>{h+=`<div class="logday"><h4>${esc(b.title||b.tag||"Block")}</h4>`;(b.ex||[]).forEach(e=>{h+=`<div class="logrow"><span class="lx">${esc(e.name)}</span><span class="v">${esc(e.dose||"")}</span></div>`;});h+=`</div>`;});
   return h+addBtn;
 }
