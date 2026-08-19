@@ -346,16 +346,17 @@ function rowVal(r){
 function summarizeRows(rows){
   if(!rows||!rows.length)return"";
   if(rows.every(r=>r.completed&&r.reps==null&&r.weight==null&&r.duration_min==null&&r.duration_sec==null&&r.distance==null&&r.calories==null))return"done as prescribed";
+  const hrw=(()=>{const r=rows.find(x=>x.avg_hr!=null||x.avg_watts!=null);if(!r)return"";const p=[];if(r.avg_hr!=null)p.push("♥ "+r.avg_hr+(r.max_hr!=null?"/"+r.max_hr:""));if(r.avg_watts!=null)p.push(r.avg_watts+" W");return " · "+p.join(" · ");})();
   const r0=rows[0];
   const nonRep = r0.duration_min!=null||r0.duration_sec!=null||r0.distance!=null||r0.calories!=null;
   if(nonRep && rows.length===1){
-    let s=rowVal(r0); if(r0.weight!=null)s+=" @ "+r0.weight+" lb"; if(r0.rpe!=null)s+=" · RPE "+r0.rpe; return s;
+    let s=rowVal(r0); if(r0.weight!=null)s+=" @ "+r0.weight+" lb"; if(r0.rpe!=null)s+=" · RPE "+r0.rpe; return s+hrw;
   }
   const vals=rows.map(rowVal);
   const repsOnly=rows.every(r=>r.reps!=null&&r.distance==null&&r.calories==null&&r.duration_sec==null&&r.duration_min==null);
   const wts=[...new Set(rows.map(r=>r.weight).filter(w=>w!=null))];
   const w=wts.length===1?` @ ${wts[0]} lb`:(wts.length>1?` @ ${Math.min(...wts)}–${Math.max(...wts)} lb`:"");
-  return `${rows.length} set${rows.length>1?"s":""} · ${vals.join(", ")}${repsOnly?" reps":""}${w}`;
+  return `${rows.length} set${rows.length>1?"s":""} · ${vals.join(", ")}${repsOnly?" reps":""}${w}`+hrw;
 }
 function fmtLast(name){
   const s=lastSessionFor(name,selDate);if(!s)return"";
@@ -460,6 +461,7 @@ function loggedRow(l){
   const showSet=(l.set_number!=null)&&(l.reps!=null||l.weight!=null||l.distance!=null||l.calories!=null||l.duration_sec!=null);
   let h=`<div class="hist-row" data-id="${l.id}"><span class="hx">${esc(l.exercise_name)}${showSet?` <span style="color:#6b7884;font-weight:400">· set ${l.set_number}</span>`:""}</span>`;
   h+=parts.join("");
+  if(l.avg_hr!=null||l.avg_watts!=null)h+=`<span style="font-size:12px;color:#8a63b8;font-weight:600">${[l.avg_hr!=null?"♥ "+l.avg_hr+(l.max_hr!=null?"/"+l.max_hr:""):null,l.avg_watts!=null?l.avg_watts+" W":null].filter(Boolean).join(" · ")}</span>`;
   h+=`<button class="del" data-del="${l.id}">🗑</button>${l.note?`<div class="hnote">📝 ${esc(l.note)}</div>`:""}</div>`;
   return h;
 }
