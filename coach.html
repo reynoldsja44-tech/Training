@@ -1189,10 +1189,13 @@ async function stravaImport(){
       calories:a.cal,duration_sec:null,avg_hr:a.avg_hr,max_hr:a.max_hr,avg_watts:a.avg_watts,source_id:a.src||("strava:"+a.id)};
   });
   try{
-    const r=await fetch(`${SB_URL}/rest/v1/logs`,{method:"POST",headers:{...authHeaders(),"Content-Type":"application/json",Prefer:"resolution=ignore-duplicates"},body:JSON.stringify(rows)});
+    const imported=new Set((athLogs||[]).map(l=>l.source_id).filter(Boolean));
+    const fresh=rows.filter(x=>!imported.has(x.source_id));
+    if(!fresh.length){toast("All checked rows were already imported",true);return;}
+    const r=await fetch(`${SB_URL}/rest/v1/logs?on_conflict=source_id`,{method:"POST",headers:{...authHeaders(),"Content-Type":"application/json",Prefer:"resolution=ignore-duplicates"},body:JSON.stringify(fresh)});
     if(!r.ok)throw new Error(await r.text());
-    toast("Imported "+rows.length+" ✓");athLogs=null;renderActsTable();
-  }catch(e){toast("Import failed",true);console.error(e);}
+    toast("Imported "+fresh.length+" ✓");athLogs=null;renderActsTable();
+  }catch(e){const m=String(e.message||e).slice(0,140);toast("Import failed: "+m,true);console.error(e);}
 }
 /* handle OAuth redirect back with ?code= */
 (function(){
