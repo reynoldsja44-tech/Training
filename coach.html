@@ -37,6 +37,9 @@
   .avatar{width:40px;height:40px;border-radius:11px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px;flex-shrink:0;}
   .roster-row .nm{flex:1;}.roster-row .nm b{font-size:16.5px;}
   .roster-row .nm .slug{font-size:13px;color:var(--muted);font-family:ui-monospace,monospace;}
+  .tbl{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0;}
+  .tbl th,.tbl td{padding:6px 6px;border-bottom:1px solid var(--line,#eee);text-align:left;}
+  .tbl tr.dim{opacity:.45;}
   .roster-row .arrow{color:var(--muted);}
 
   label.fld{display:block;margin:9px 0;}
@@ -368,10 +371,12 @@ function renderEditor(){
     <div class="tab ${editTab==='calendar'?'on':''}" onclick="setTab('calendar')">Calendar</div>
     <div class="tab ${editTab==='program'?'on':''}" onclick="setTab('program')">Program</div>
     <div class="tab ${editTab==='logs'?'on':''}" onclick="setTab('logs')">Logs</div>
+    <div class="tab ${editTab==='strava'?'on':''}" onclick="setTab('strava')">Import</div>
     <div class="tab ${editTab==='settings'?'on':''}" onclick="setTab('settings')">Settings</div></div>`;
   if(editTab==="calendar")h+=renderCalendar();
   else if(editTab==="program")h+=renderProgramEditor();
   else if(editTab==="logs")h+=`<div id="logsArea" class="card"><div class="card-b"><div class="muted">Loading…</div></div></div>`;
+  else if(editTab==="strava")h+=renderStrava();
   else h+=renderSettings();
   document.getElementById("app").innerHTML=h;
   const dirty=isDirty();
@@ -1016,6 +1021,163 @@ async function loadLogs(){
   h+=`</div>`;area.innerHTML=h;
 }
 async function delLog(id){if(!confirm("Delete this log entry?"))return;try{await DB.delLog(id);athLogs=athLogs.filter(l=>l.id!==id);loadLogs();toast("Deleted");}catch(e){toast("Delete failed",true);}}
+/* ---------------- Strava import ---------------- */
+const STRAVA_CLIENT_ID="";  // paste your Strava app client ID here after creating it
+const STRAVA_FUNC=SB_URL+"/functions/v1/strava-sync";
+let stravaActs=null,stravaConnected=null;
+function stravaRedirectUri(){return location.origin+location.pathname;}
+async function stravaCall(payload){
+  const r=await fetch(STRAVA_FUNC,{method:"POST",headers:{...authHeaders(),"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  const d=await r.json();
+  if(!r.ok)throw new Error(d&&d.error?JSON.stringify(d.error):"strava call failed");
+  return d;
+}
+function renderStrava(){
+  let h=`<div class="card"><div class="card-b">
+    <b>Import workouts from files</b>
+    <p class="muted">Apple Watch: HealthFit app → auto-export TCX. Peloton: profile → Download Workouts (CSV). Drop one or many files below — HR, watts, pace come along.</p>
+    <input type="file" id="impFiles" multiple accept=".tcx,.csv" onchange="filesChosen(this.files)" class="in">
+    <div id="stravaList"></div>
+  </div></div>`;
+  if(STRAVA_CLIENT_ID){h+=`<div class="card"><div class="card-b" id="stravaBox"><div class="muted">Checking Strava connection…</div></div></div>`;setTimeout(stravaInit,0);}
+  return h;
+}
+async function filesChosen(files){
+  const acts=[];
+  for(const f of files){
+    try{
+      const text=await f.text();
+      if(/\.tcx$/i.test(f.name))acts.push(parseTCX(text,f.name));
+      else if(/\.csv$/i.test(f.name))acts.push(...parsePelotonCSV(text));
+    }catch(e){console.error("parse fail",f.name,e);toast("Could not parse "+f.name,true);}
+  }
+  stravaActs=acts.filter(Boolean);
+  renderActsTable();
+}
+function parseTCX(text,fname){
+  const doc=new DOMParser().parseFromString(text,"text/xml");
+  const act=doc.querySelector("Activity");
+  if(!act)throw new Error("no Activity");
+  const sport=act.getAttribute("Sport")||"Workout";
+  const id=(act.querySelector("Id")||{}).textContent||fname;
+  let time=0,dist=0,cal=0;const hrs=[],watts=[];
+  act.querySelectorAll("Lap").forEach(l=>{
+    time+=parseFloat((l.querySelector("TotalTimeSeconds")||{}).textContent||0);
+    dist+=parseFloat((l.querySelector("DistanceMeters")||{}).textContent||0);
+    cal+=parseFloat((l.querySelector("Calories")||{}).textContent||0);
+  });
+  act.querySelectorAll("Trackpoint").forEach(tp=>{
+    const hr=tp.querySelector("HeartRateBpm Value");if(hr)hrs.push(+hr.textContent);
+    const w=tp.getElementsByTagNameNS("*","Watts")[0];if(w&&w.textContent)watts.push(+w.textContent);
+  });
+  const avg=(a)=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):null;
+  return {src:"tcx:"+id.trim(),name:sport+" ("+fname.replace(/\.tcx$/i,"")+")",type:sport,
+    date:(id.trim()).slice(0,10)||"",moving_min:Math.round(time/60*10)/10,
+    miles:dist?Math.round(dist/1609.34*100)/100:null,
+    avg_hr:avg(hrs),max_hr:hrs.length?Math.max(...hrs):null,avg_watts:avg(watts),cal:cal?Math.round(cal):null};
+}
+function parsePelotonCSV(text){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  if(lines.length<2)return[];
+  const parseLine=(l)=>{const out=[];let cur="",q=false;for(const ch of l){if(ch==='"')q=!q;else if(ch===','&&!q){out.push(cur);cur="";}else cur+=ch;}out.push(cur);return out;};
+  const head=parseLine(lines[0]).map(h=>h.toLowerCase());
+  const col=(row,frag)=>{const i=head.findIndex(h=>h.includes(frag));return i>=0?(row[i]||""):"";};
+  const num=(v)=>{const n=parseFloat(String(v).replace(/[^0-9.\-]/g,""));return isNaN(n)?null:n;};
+  return lines.slice(1).map(l=>{
+    const row=parseLine(l);
+    const ts=col(row,"workout timestamp");
+    if(!ts)return null;
+    const date=(ts.match(/\d{4}-\d{2}-\d{2}/)||[ts.slice(0,10)])[0];
+    const mins=num(col(row,"length"));
+    const disc=col(row,"fitness discipline")||"Peloton";
+    const title=col(row,"title")||disc;
+    const hr=num(col(row,"heartrate"));
+    const w=num(col(row,"avg. watts"));
+    const c=num(col(row,"calories"));
+    return {src:"pelo:"+ts.trim(),name:title,type:disc,date,moving_min:mins,
+      miles:num(col(row,"distance")),avg_hr:hr==null?null:Math.round(hr),
+      max_hr:null,avg_watts:w==null?null:Math.round(w),cal:c==null?null:Math.round(c)};
+  }).filter(Boolean);
+}
+async function renderActsTable(){
+  const list=document.getElementById("stravaList");
+  if(!stravaActs||!stravaActs.length){list.innerHTML='<div class="muted">Nothing parsed.</div>';return;}
+  if(!athLogs)try{athLogs=await DB.logs(editing.slug);}catch(e){athLogs=[];}
+  const imported=new Set((athLogs||[]).map(l=>l.source_id).filter(Boolean));
+  stravaActs.sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  let h='<table class="tbl"><tr><th></th><th>Date</th><th>Activity</th><th>Type</th><th>Min</th><th>Mi</th><th>HR</th><th>W</th><th>Log as</th></tr>';
+  stravaActs.forEach((a,i)=>{
+    const done=imported.has(a.src||("strava:"+a.id));
+    const names=cardioNamesFor(a.date);
+    const opts=names.map(n=>`<option>${esc(n)}</option>`).join("")+`<option>${esc(a.name)}</option>`;
+    h+=`<tr class="${done?'dim':''}"><td>${done?"✓":`<input type=checkbox data-si=${i} checked>`}</td><td>${esc(a.date)}</td><td>${esc(a.name)}</td><td>${esc(a.type)}</td><td>${a.moving_min??""}</td><td>${a.miles??""}</td><td>${a.avg_hr??""}</td><td>${a.avg_watts??""}</td><td>${done?"imported":`<select class="in" data-sn=${i}>${opts}</select>`}</td></tr>`;
+  });
+  h+='</table><button class="btn" onclick="stravaImport()">Import checked</button>';
+  list.innerHTML=h;
+}
+async function stravaInit(){
+  const box=document.getElementById("stravaBox");if(!box)return;
+  try{
+    if(stravaConnected===null){const s=await stravaCall({action:"status",athlete_slug:editing.slug});stravaConnected=s.connected;}
+    if(!stravaConnected){
+      const url="https://www.strava.com/oauth/authorize?client_id="+STRAVA_CLIENT_ID+"&response_type=code&redirect_uri="+encodeURIComponent(stravaRedirectUri())+"&scope=activity:read_all&state="+encodeURIComponent(editing.slug);
+      box.innerHTML=`<b>${esc(editing.name)} is not connected to Strava.</b><p class="muted">Connect authorizes read-only access to their activities.</p><a class="btn" href="${url}">Connect ${esc(editing.name)}'s Strava</a>`;
+      return;
+    }
+    box.innerHTML=`<div class="row2"><b>Connected ✓</b><button class="btn light" onclick="stravaLoad(30)">Load last 30 days</button><button class="btn light" onclick="stravaLoad(90)">90 days</button></div><div id="stravaList"></div>`;
+  }catch(e){box.innerHTML=`<div class="muted">Strava error: ${esc(String(e.message||e))}</div>`;}
+}
+async function stravaLoad(days){
+  const list=document.getElementById("stravaList");list.innerHTML='<div class="muted">Loading activities…</div>';
+  try{
+    const after=Math.floor(Date.now()/1000)-days*86400;
+    const d=await stravaCall({action:"activities",athlete_slug:editing.slug,after});
+    stravaActs=(d.activities||[]).map(a=>({...a,src:"strava:"+a.id}));
+    renderActsTable();
+  }catch(e){list.innerHTML=`<div class="muted">Load failed: ${esc(String(e.message||e))}</div>`;}
+}
+function cardioNamesFor(ds){
+  try{
+    const ov=editing.overrides&&editing.overrides[ds];
+    let day=ov;
+    if(!day){const dt=new Date(ds+"T12:00:00");const dows=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];const dow=dows[dt.getDay()];day=(editing.program.days||[]).find(x=>x.dow===dow);}
+    if(!day)return[];
+    const out=[];
+    (day.blocks||[]).forEach(b=>{if(b.kind==="cardio")(b.ex||[]).forEach(e=>out.push(e.name));});
+    return out;
+  }catch(e){return[];}
+}
+async function stravaImport(){
+  const checks=[...document.querySelectorAll("input[data-si]:checked")];
+  if(!checks.length){toast("Nothing checked",true);return;}
+  const rows=checks.map(c=>{
+    const a=stravaActs[+c.dataset.si];
+    const sel=document.querySelector(`select[data-sn="${c.dataset.si}"]`);
+    return {athlete_id:editing.id,athlete_slug:editing.slug,log_date:a.date,day_dow:null,day_focus:null,
+      block_title:"Strava import",exercise_name:(sel&&sel.value)||a.name,set_number:1,reps:null,weight:null,weight_unit:null,
+      completed:true,note:a.name,duration_min:a.moving_min,rpe:null,distance:a.miles,distance_unit:a.miles!=null?"mi":null,
+      calories:a.cal,duration_sec:null,avg_hr:a.avg_hr,max_hr:a.max_hr,avg_watts:a.avg_watts,source_id:a.src||("strava:"+a.id)};
+  });
+  try{
+    const r=await fetch(`${SB_URL}/rest/v1/logs`,{method:"POST",headers:{...authHeaders(),"Content-Type":"application/json",Prefer:"resolution=ignore-duplicates"},body:JSON.stringify(rows)});
+    if(!r.ok)throw new Error(await r.text());
+    toast("Imported "+rows.length+" ✓");athLogs=null;renderActsTable();
+  }catch(e){toast("Import failed",true);console.error(e);}
+}
+/* handle OAuth redirect back with ?code= */
+(function(){
+  const p=new URLSearchParams(location.search);
+  const code=p.get("code"),slug=p.get("state");
+  if(code&&slug){
+    const iv=setInterval(async()=>{
+      if(!AUTH.valid())return;
+      clearInterval(iv);
+      try{await stravaCall({action:"exchange",code,athlete_slug:slug});toast("Strava connected ✓");}
+      catch(e){toast("Strava connect failed",true);}
+      history.replaceState({},"",location.pathname);
+    },400);
+  }
+})();
 function renderSettings(){
   return `<div class="card"><div class="card-b">
     <label class="fld"><span>Name</span><input class="in" value="${esc(editing.name)}" onchange="editing.name=this.value;document.getElementById('hTitle').textContent=this.value"></label>
