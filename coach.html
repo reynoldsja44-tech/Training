@@ -1048,7 +1048,11 @@ async function filesChosen(files){
     try{
       const text=await f.text();
       if(/\.tcx$/i.test(f.name))acts.push(parseTCX(text,f.name));
-      else if(/\.csv$/i.test(f.name))acts.push(...parsePelotonCSV(text));
+      else if(/\.csv$/i.test(f.name)){
+        const head1=(text.split(/\r?\n/)[0]||"").toLowerCase();
+        if(head1.includes("activity date")&&head1.includes("activity id"))acts.push(...parseStravaCSV(text));
+        else acts.push(...parsePelotonCSV(text));
+      }
     }catch(e){console.error("parse fail",f.name,e);toast("Could not parse "+f.name,true);}
   }
   stravaActs=acts.filter(Boolean);
@@ -1075,6 +1079,32 @@ function parseTCX(text,fname){
     date:(id.trim()).slice(0,10)||"",moving_min:Math.round(time/60*10)/10,
     miles:dist?Math.round(dist/1609.34*100)/100:null,
     avg_hr:avg(hrs),max_hr:hrs.length?Math.max(...hrs):null,avg_watts:avg(watts),cal:cal?Math.round(cal):null};
+}
+function parseStravaCSV(text){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  if(lines.length<2)return[];
+  const parseLine=(l)=>{const out=[];let cur="",q=false;for(const ch of l){if(ch==='"')q=!q;else if(ch===','&&!q){out.push(cur);cur="";}else cur+=ch;}out.push(cur);return out;};
+  const head=parseLine(lines[0]).map(h=>h.toLowerCase().trim());
+  const idx=(frag)=>head.findIndex(h=>h===frag)>=0?head.findIndex(h=>h===frag):head.findIndex(h=>h.includes(frag));
+  const iId=idx("activity id"),iDate=idx("activity date"),iName=idx("activity name"),iType=idx("activity type"),
+        iMov=idx("moving time"),iDist=idx("distance"),iAhr=idx("average heart rate"),iMhr=idx("max heart rate"),iW=idx("average watts"),iCal=idx("calories");
+  const num=(v)=>{const n=parseFloat(String(v||"").replace(/[^0-9.\-]/g,""));return isNaN(n)?null:n;};
+  return lines.slice(1).map(l=>{
+    const r=parseLine(l);
+    const id=r[iId];if(!id)return null;
+    const d=new Date(r[iDate]);
+    if(isNaN(d))return null;
+    const date=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    const movS=num(r[iMov]);           // seconds in Strava export
+    const distRaw=num(r[iDist]);       // km (may be meters in old exports)
+    let miles=null;
+    if(distRaw!=null)miles=Math.round((distRaw>1000?distRaw/1609.34:distRaw*0.621371)*100)/100;
+    const hr=num(r[iAhr]),mhr=num(r[iMhr]),wt=num(r[iW]),cal=num(r[iCal]);
+    return {src:"strava:"+String(id).trim(),name:r[iName]||r[iType]||"Activity",type:r[iType]||"",date,
+      moving_min:movS!=null?Math.round(movS/60*10)/10:null,miles,
+      avg_hr:hr==null?null:Math.round(hr),max_hr:mhr==null?null:Math.round(mhr),
+      avg_watts:wt==null?null:Math.round(wt),cal:cal==null?null:Math.round(cal)};
+  }).filter(Boolean);
 }
 function parsePelotonCSV(text){
   const lines=text.split(/\r?\n/).filter(l=>l.trim());
