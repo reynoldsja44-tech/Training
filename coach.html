@@ -1027,7 +1027,7 @@ const STRAVA_FUNC=SB_URL+"/functions/v1/strava-sync";
 let stravaActs=null,stravaConnected=null;
 function stravaRedirectUri(){return location.origin+location.pathname;}
 async function stravaCall(payload){
-  const r=await fetch(STRAVA_FUNC,{method:"POST",headers:{...authHeaders(),"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  const r=await fetch(STRAVA_FUNC,{method:"POST",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify(payload)});
   const d=await r.json();
   if(!r.ok)throw new Error(d&&d.error?JSON.stringify(d.error):"strava call failed");
   return d;
@@ -1035,8 +1035,8 @@ async function stravaCall(payload){
 function renderStrava(){
   let h=`<div class="card"><div class="card-b">
     <b>Import workouts from files</b>
-    <p class="muted">Apple Watch: HealthFit app → auto-export TCX. Peloton: profile → Download Workouts (CSV). Drop one or many files below — HR, watts, pace come along.</p>
-    <input type="file" id="impFiles" multiple accept=".tcx,.csv" onchange="filesChosen(this.files)" class="in">
+    <p class="muted">Accepts TCX, FIT (incl. .fit.gz), Strava bulk-export CSV, and Peloton CSV. Sources: Strava activity → Export Original · Strava account download · HealthFit · Peloton "Download Workouts". HR, watts, pace come along.</p>
+    <input type="file" id="impFiles" multiple accept=".tcx,.csv,.fit,.gz" onchange="filesChosen(this.files)" class="in">
     <div id="stravaList"></div>
   </div></div>`;
   if(STRAVA_CLIENT_ID){h+=`<div class="card"><div class="card-b" id="stravaBox"><div class="muted">Checking Strava connection…</div></div></div>`;setTimeout(stravaInit,0);}
@@ -1046,6 +1046,7 @@ async function filesChosen(files){
   const acts=[];
   for(const f of files){
     try{
+      if(/\.fit(\.gz)?$/i.test(f.name)){acts.push(await parseFIT(await f.arrayBuffer(),f.name));continue;}
       const text=await f.text();
       if(/\.tcx$/i.test(f.name))acts.push(parseTCX(text,f.name));
       else if(/\.csv$/i.test(f.name)){
@@ -1057,6 +1058,102 @@ async function filesChosen(files){
   }
   stravaActs=acts.filter(Boolean);
   renderActsTable();
+}
+async function gunzipBuf(buf){
+  if(typeof DecompressionStream==="undefined")throw new Error("This browser cannot decompress .gz \u2014 unzip first");
+  const ds=new DecompressionStream("gzip");
+  const stream=new Blob([buf]).stream().pipeThrough(ds);
+  return await new Response(stream).arrayBuffer();
+}
+const FIT_SPORTS={0:"Workout",1:"Run",2:"Ride",5:"Swim",11:"Walk",4:"Fitness",10:"Training",15:"Row",20:"Elliptical",21:"Stair",26:"HIIT",62:"HIIT"};
+async function parseFIT(buf,fname){
+  let u8=new Uint8Array(buf);
+  if(u8[0]===0x1f&&u8[1]===0x8b){buf=await gunzipBuf(buf);u8=new Uint8Array(buf);}
+  const dv=new DataView(buf);
+  const hdrSize=u8[0];
+  if(String.fromCharCode(u8[8],u8[9],u8[10],u8[11])!==".FIT")throw new Error("not a FIT file");
+  const dataSize=dv.getUint32(4,true);
+  let p=hdrSize;const end=Math.min(hdrSize+dataSize,u8.length);
+  const defs={};
+  let session=null;
+  const recAgg={hr:[],watts:[],dist:0,firstTs:null,lastTs:null,cal:0};
+  const FIT_EPOCH=631065600;
+  function readField(le,off,size,base){
+    try{
+      switch(base&0x1f){
+        case 0: case 2: case 10: return size===1?dv.getUint8(off):null;      // enum,u8,u8z
+        case 1: return dv.getInt8(off);
+        case 3: return dv.getInt16(off,le);
+        case 4: case 11: return dv.getUint16(off,le);
+        case 5: return dv.getInt32(off,le);
+        case 6: case 12: return dv.getUint32(off,le);
+        case 8: return dv.getFloat32(off,le);
+        case 9: return dv.getFloat64(off,le);
+        default: return null;
+      }
+    }catch(e){return null;}
+  }
+  while(p<end){
+    const h=u8[p];
+    if(h&0x40){ // definition message
+      const local=h&0x0f, hasDev=!!(h&0x20);
+      const le=u8[p+2]===0?true:false;
+      const global=le?dv.getUint16(p+3,true):dv.getUint16(p+3,false);
+      const nf=u8[p+5];
+      const fields=[];let q=p+6;
+      for(let i=0;i<nf;i++){fields.push({num:u8[q],size:u8[q+1],base:u8[q+2]});q+=3;}
+      let devBytes=0;
+      if(hasDev){const nd=u8[q];q++;for(let i=0;i<nd;i++){devBytes+=u8[q+1];q+=3;}}
+      defs[local]={global,fields,le,devBytes,size:fields.reduce((s,f)=>s+f.size,0)+devBytes};
+      p=q;
+    }else{ // data message (normal or compressed-timestamp header)
+      const local=(h&0x80)?((h>>5)&0x03):(h&0x0f);
+      const d=defs[local];
+      if(!d){throw new Error("FIT parse lost sync");}
+      let off=p+1;
+      const vals={};
+      for(const f of d.fields){vals[f.num]=readField(d.le,off,f.size,f.base);off+=f.size;}
+      off+=d.devBytes;
+      if(d.global===18){ // session
+        session=session||{};
+        if(vals[2]!=null)session.start=vals[2];
+        if(vals[7]!=null)session.elapsed=vals[7]/1000;
+        if(vals[8]!=null)session.timer=vals[8]/1000;
+        if(vals[9]!=null)session.dist=vals[9]/100;
+        if(vals[11]!=null)session.cal=vals[11];
+        if(vals[16]!=null&&vals[16]!==255)session.avg_hr=vals[16];
+        if(vals[17]!=null&&vals[17]!==255)session.max_hr=vals[17];
+        if(vals[20]!=null&&vals[20]!==65535)session.avg_watts=vals[20];
+        if(vals[5]!=null)session.sport=vals[5];
+      }else if(d.global===20){ // record (fallback aggregation)
+        if(vals[253]!=null){if(recAgg.firstTs==null)recAgg.firstTs=vals[253];recAgg.lastTs=vals[253];}
+        if(vals[3]!=null&&vals[3]!==255)recAgg.hr.push(vals[3]);
+        if(vals[7]!=null&&vals[7]!==65535)recAgg.watts.push(vals[7]);
+        if(vals[5]!=null)recAgg.dist=Math.max(recAgg.dist,vals[5]/100);
+      }
+      p=off;
+    }
+  }
+  const avg=(a)=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):null;
+  let startSec=null,timerS=null,distM=null,ahr=null,mhr=null,aw=null,cal=null,sport="Workout";
+  if(session){
+    startSec=session.start??null;timerS=session.timer??session.elapsed??null;distM=session.dist??null;
+    ahr=session.avg_hr??null;mhr=session.max_hr??null;aw=session.avg_watts??null;cal=session.cal??null;
+    sport=FIT_SPORTS[session.sport]||"Workout";
+  }
+  if(startSec==null&&recAgg.firstTs!=null)startSec=recAgg.firstTs;
+  if(timerS==null&&recAgg.firstTs!=null&&recAgg.lastTs!=null)timerS=recAgg.lastTs-recAgg.firstTs;
+  if(distM==null&&recAgg.dist)distM=recAgg.dist;
+  if(ahr==null)ahr=avg(recAgg.hr);
+  if(mhr==null&&recAgg.hr.length)mhr=Math.max(...recAgg.hr);
+  if(aw==null)aw=avg(recAgg.watts);
+  if(startSec==null)throw new Error("FIT: no timestamps found");
+  const d0=new Date((startSec+FIT_EPOCH)*1000);
+  const date=d0.getFullYear()+"-"+String(d0.getMonth()+1).padStart(2,"0")+"-"+String(d0.getDate()).padStart(2,"0");
+  return {src:"fit:"+startSec,name:sport+" ("+fname.replace(/\.fit(\.gz)?$/i,"")+")",type:sport,date,
+    moving_min:timerS!=null?Math.round(timerS/60*10)/10:null,
+    miles:distM!=null?Math.round(distM/1609.34*100)/100:null,
+    avg_hr:ahr,max_hr:mhr,avg_watts:aw,cal:cal!=null?Math.round(cal):null};
 }
 function parseTCX(text,fname){
   const doc=new DOMParser().parseFromString(text,"text/xml");
@@ -1192,7 +1289,7 @@ async function stravaImport(){
     const imported=new Set((athLogs||[]).map(l=>l.source_id).filter(Boolean));
     const fresh=rows.filter(x=>!imported.has(x.source_id));
     if(!fresh.length){toast("All checked rows were already imported",true);return;}
-    const r=await fetch(`${SB_URL}/rest/v1/logs?on_conflict=source_id`,{method:"POST",headers:{...authHeaders(),"Content-Type":"application/json",Prefer:"resolution=ignore-duplicates"},body:JSON.stringify(fresh)});
+    const r=await fetch(`${SB_URL}/rest/v1/logs?on_conflict=source_id`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"resolution=ignore-duplicates"},body:JSON.stringify(fresh)});
     if(!r.ok)throw new Error(await r.text());
     toast("Imported "+fresh.length+" ✓");athLogs=null;renderActsTable();
   }catch(e){const m=String(e.message||e).slice(0,140);toast("Import failed: "+m,true);console.error(e);}
