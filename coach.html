@@ -1286,12 +1286,32 @@ async function stravaImport(){
       calories:a.cal,duration_sec:null,avg_hr:a.avg_hr,max_hr:a.max_hr,avg_watts:a.avg_watts,source_id:a.src||("strava:"+a.id)};
   });
   try{
+    if(!athLogs)try{athLogs=await DB.logs(editing.slug);}catch(e){athLogs=[];}
     const imported=new Set((athLogs||[]).map(l=>l.source_id).filter(Boolean));
     const fresh=rows.filter(x=>!imported.has(x.source_id));
     if(!fresh.length){toast("All checked rows were already imported",true);return;}
-    const r=await fetch(`${SB_URL}/rest/v1/logs?on_conflict=source_id`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"resolution=ignore-duplicates"},body:JSON.stringify(fresh)});
-    if(!r.ok)throw new Error(await r.text());
-    toast("Imported "+fresh.length+" ✓");athLogs=null;renderActsTable();
+    // merge into an existing manual log (same date + exercise, no source yet) instead of duplicating
+    const manualFor=(row)=> (athLogs||[]).find(l=>!l.source_id&&l.log_date===row.log_date&&l.exercise_name===row.exercise_name);
+    const toInsert=[];let merged=0;
+    for(const row of fresh){
+      const m=manualFor(row);
+      if(m){
+        const body={source_id:row.source_id,
+          avg_hr:m.avg_hr??row.avg_hr,max_hr:m.max_hr??row.max_hr,avg_watts:m.avg_watts??row.avg_watts,
+          duration_min:m.duration_min??row.duration_min,distance:m.distance??row.distance,
+          distance_unit:m.distance_unit??row.distance_unit,calories:m.calories??row.calories,
+          note:m.note??row.note};
+        const r=await fetch(`${SB_URL}/rest/v1/logs?id=eq.${m.id}`,{method:"PATCH",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify(body)});
+        if(!r.ok)throw new Error(await r.text());
+        m.source_id=row.source_id;merged++;
+      }else toInsert.push(row);
+    }
+    if(toInsert.length){
+      const r=await fetch(`${SB_URL}/rest/v1/logs?on_conflict=source_id`,{method:"POST",headers:{...H(),"Content-Type":"application/json",Prefer:"resolution=ignore-duplicates"},body:JSON.stringify(toInsert)});
+      if(!r.ok)throw new Error(await r.text());
+    }
+    toast((merged?("Merged "+merged+" into existing logs, "):"")+"added "+toInsert.length+" ✓");
+    athLogs=null;renderActsTable();
   }catch(e){const m=String(e.message||e).slice(0,140);toast("Import failed: "+m,true);console.error(e);}
 }
 /* handle OAuth redirect back with ?code= */
