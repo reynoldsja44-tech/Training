@@ -319,6 +319,7 @@ function renderRoster(){
     <button class="btn light sm" onclick="openLibrary()">📚 Exercise library</button>
     <button class="btn light sm" onclick="openGroups()">🧩 Groups</button>
     <button class="btn light sm" onclick="openTemplates()">🗂 Weekly templates</button>
+    <button class="btn light sm" onclick="openAssistant()">🤖 Assistant</button>
     ${DEMO?"":`<button class="btn ghost sm" onclick="AUTH.logout()" title="Sign out">Sign out</button>`}
     <button class="btn primary sm" onclick="newAthlete()">+ Add athlete</button></div>`;
   if(!roster.length)h+=`<div class="empty"><div class="big">No athletes yet</div>Add your first person to assign them a program.</div>`;
@@ -678,6 +679,57 @@ async function saveProgram(){
   try{await DB.update(editing.id,{program:editing.program,overrides:editing.overrides||{},name:editing.name,slug:editing.slug});toast("Saved ✓");const i=roster.findIndex(a=>a.id===editing.id);if(i>=0)roster[i]={...roster[i],program:editing.program,overrides:editing.overrides};editing.__snap=JSON.stringify({p:editing.program,o:editing.overrides});renderEditor();}
   catch(e){toast("Save failed: "+e.message.slice(0,60),true);}
   btn.disabled=false;btn.textContent="Save program";
+}
+
+/* ---------------- ASSISTANT ---------------- */
+let asstHistory=[],asstLog=[],asstBusy=false;
+function openAssistant(){
+  editing=null;
+  document.getElementById("hCrumb").style.display="block";
+  document.getElementById("hCrumb").textContent="← All athletes";
+  document.getElementById("hTitle").textContent="🤖 Assistant";
+  document.getElementById("savebar").style.display="none";
+  renderAssistant();
+}
+function renderAssistant(){
+  let msgs="";
+  if(!asstLog.length)msgs=`<div class="empty" style="padding:26px 16px"><div class="big">Tell me what to change</div>Try: “Add bicep curls to tomorrow's workout for me” · “Move James's Saturday session to Sunday this week” · “What's Katie doing Friday?”</div>`;
+  asstLog.forEach(m=>{
+    if(m.role==="user")msgs+=`<div style="display:flex;justify-content:flex-end;margin:8px 0"><div style="background:var(--navy);color:#fff;border-radius:14px 14px 3px 14px;padding:9px 13px;max-width:82%;white-space:pre-wrap">${esc(m.text)}</div></div>`;
+    else{
+      msgs+=`<div style="display:flex;margin:8px 0"><div style="background:#f2eee4;border-radius:14px 14px 14px 3px;padding:9px 13px;max-width:86%;white-space:pre-wrap">${esc(m.text)}</div></div>`;
+      if(m.changes&&m.changes.length)msgs+=`<div style="margin:2px 0 8px 4px">${m.changes.map(()=>"").join("")}<span class="kindbadge" style="background:#e3f2f0;color:#1f6f63">✓ ${m.changes.length} database change${m.changes.length!==1?"s":""} made</span></div>`;
+    }
+  });
+  if(asstBusy)msgs+=`<div style="display:flex;margin:8px 0"><div style="background:#f2eee4;border-radius:14px;padding:9px 13px;color:var(--muted)">Working…</div></div>`;
+  document.getElementById("app").innerHTML=`<div class="card"><div class="card-b">
+    <div id="asstMsgs" style="min-height:220px;max-height:56vh;overflow-y:auto;padding:4px 2px">${msgs}</div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <input class="in" id="asstIn" placeholder="e.g. add bicep curls to tomorrow's workout for me" style="flex:1" onkeydown="if(event.key==='Enter')sendAssistant()" ${asstBusy?"disabled":""}>
+      <button class="btn primary" id="asstSend" onclick="sendAssistant()" ${asstBusy?"disabled":""}>Send</button>
+    </div>
+    <p class="muted" style="margin:8px 2px 0;font-size:12.5px">Changes are made immediately. For big or judgment-heavy changes, use the main Claude chat. <button class="btn ghost sm" onclick="asstLog=[];asstHistory=[];renderAssistant()" style="margin-left:6px">Clear</button></p>
+  </div></div>`;
+  const box=document.getElementById("asstMsgs");if(box)box.scrollTop=box.scrollHeight;
+  const inp=document.getElementById("asstIn");if(inp&&!asstBusy)inp.focus();
+}
+async function sendAssistant(){
+  const inp=document.getElementById("asstIn");
+  const msg=(inp.value||"").trim();
+  if(!msg||asstBusy)return;
+  asstLog.push({role:"user",text:msg});
+  asstBusy=true;renderAssistant();
+  try{
+    const r=await sfetch(SB_URL+"/functions/v1/coach-assistant",{method:"POST",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify({message:msg,history:asstHistory})});
+    const d=await r.json();
+    if(!r.ok||d.error)throw new Error(d.error||("HTTP "+r.status));
+    asstHistory=d.history||[];
+    asstLog.push({role:"assistant",text:d.reply||"(no reply)",changes:d.changes||[]});
+    if(d.changes&&d.changes.length)roster=await DB.list();
+  }catch(e){
+    asstLog.push({role:"assistant",text:"⚠ "+e.message,changes:[]});
+  }
+  asstBusy=false;renderAssistant();
 }
 
 /* ---------------- WEEKLY TEMPLATES ---------------- */
