@@ -976,14 +976,17 @@ function renderAddGroup(){
   let h=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-h"><h3>Add a saved group</h3><button class="btn ghost sm" onclick="closeModal()">Close</button></div><div class="modal-b">`;
   if(!groups.length)h+=`<div class="muted">No groups saved yet. Create one from the roster screen → 🧩 Groups.</div>`;
   else{
-    h+=`<div class="muted" style="margin-bottom:6px">Choose a group</div>`;
+    const selG=groups.find(x=>x.id===agSel.groupId);
+    h+=`<div class="muted" style="margin-bottom:6px">Choose a group (tap to select, then confirm below)</div>`;
+    h+=`<div style="max-height:38vh;overflow-y:auto;margin-bottom:8px;border:1px solid #eee;border-radius:10px;padding:4px">`;
     groups.forEach(g=>{h+=`<div class="libitem" onclick="agSel.groupId='${g.id}';renderAddGroup()" style="${agSel.groupId===g.id?'border-color:var(--navy);box-shadow:0 0 0 1.5px var(--navy) inset':''}"><div class="li-nm"><b>${esc(g.name)}</b> <span class="muted">· ${(g.items||[]).length} ex</span></div><span class="kindbadge ${esc(g.kind||'strength')}">${esc(g.kind||'')}</span></div>`;});
+    h+=`</div>`;
     if(agSel.dateMode){
-      h+=`<div class="row2" style="margin-top:14px"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="applyAddGroupDate()">Add to ${esc(progDate||"")}</button></div>`;
+      h+=`<div class="row2" style="margin-top:14px"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="applyAddGroupDate()">Add ${selG?'"'+esc(selG.name)+'"':""} to ${esc(progDate||"")}</button></div>`;
     }else{
       h+=`<div class="muted" style="margin:12px 0 6px">Add to which days? (repeats every week)</div><div class="row2" style="flex-wrap:wrap">`;
       DOWS.forEach(d=>{const on=agSel.dows.includes(d);h+=`<button class="btn ${on?'primary':'light'} sm" style="min-width:60px" onclick="toggleAgDow('${d}')">${d}</button>`;});
-      h+=`</div><div class="row2" style="margin-top:14px"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="applyAddGroup()">Add to ${agSel.dows.length} day${agSel.dows.length!==1?'s':''}</button></div>`;
+      h+=`</div><div class="row2" style="margin-top:14px"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="applyAddGroup()">Add ${selG?'"'+esc(selG.name)+'"':""} to ${agSel.dows.length} day${agSel.dows.length!==1?'s':''}</button></div>`;
     }
   }
   h+=`</div></div></div>`;document.getElementById("modalRoot").innerHTML=h;
@@ -991,7 +994,13 @@ function renderAddGroup(){
 function applyAddGroupDate(){
   const g=groups.find(x=>x.id===agSel.groupId);if(!g){toast("Pick a group",true);return;}
   const D=curDays();D[0].rest=false;(D[0].blocks=D[0].blocks||[]).push({kind:g.kind||"strength",tag:g.tag||g.kind||"",title:g.name,sub:"",ex:JSON.parse(JSON.stringify(g.items||[]))});
-  closeModal();renderEditor();toast(`Added “${g.name}” to ${progDate}`);
+  closeModal();renderEditor();toast(`Added “${g.name}” to ${progDate} — Save program to commit`);scrollToBlockTitle(g.name);
+}
+function scrollToBlockTitle(title){
+  setTimeout(()=>{
+    const inputs=[...document.querySelectorAll('#app input')].filter(i=>i.value===title);
+    if(inputs.length)inputs[inputs.length-1].scrollIntoView({behavior:"smooth",block:"center"});
+  },80);
 }
 function toggleAgDow(d){const i=agSel.dows.indexOf(d);if(i>=0)agSel.dows.splice(i,1);else agSel.dows.push(d);renderAddGroup();}
 function applyAddGroup(){
@@ -1004,7 +1013,7 @@ function applyAddGroup(){
     day.blocks.push({kind:g.kind||"strength",tag:g.tag||g.kind||"",title:g.name,sub:"",ex:JSON.parse(JSON.stringify(g.items||[]))});
   });
   editing.program.days.sort((a,b)=>{const ia=DOWS.indexOf(a.dow),ib=DOWS.indexOf(b.dow);return (ia<0?99:ia)-(ib<0?99:ib);});
-  const n=agSel.dows.length;closeModal();renderEditor();toast(`Added “${g.name}” to ${n} day${n!==1?"s":""} — remember to Save program`);
+  const n=agSel.dows.length;closeModal();renderEditor();toast(`Added “${g.name}” to ${n} day${n!==1?"s":""} — remember to Save program`);scrollToBlockTitle(g.name);
 }
 
 /* ---------------- LOGS + SETTINGS ---------------- */
