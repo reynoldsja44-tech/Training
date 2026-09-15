@@ -194,6 +194,7 @@ const DB=DEMO?makeDemoDB():realDB;
 
 let athlete=null,program=null,logs=[],selDate=null,mode="day",backfill=false,sessionData={},extras=[];
 let workouts=[],editingWorkout=null;
+const APP_VER="2026-09-12.1";
 let calMonth=new Date();
 /* ---- view modes: std | large | reader ---- */
 const VM_ORDER=["std","large","reader"];
@@ -423,6 +424,7 @@ function goToday(){onDateChange(todayISO());}
 function startBackfill(){backfill=true;sessionData={};extras=[];render();}
 
 /* ---------------- main render ---------------- */
+function verStamp(){return `<p style="text-align:center;font-size:11px;color:#9aa4ad;margin:22px 0 6px">build ${APP_VER}</p>`;}
 function render(){
   setTimeout(applyViewMode,0);
   if(mode==="history")return renderHistory();
@@ -1036,7 +1038,7 @@ function renderHistory(){
     rows.forEach(l=>{html+=loggedRow(l);});
     html+=`</div>`;
   });
-  app.innerHTML=html;document.getElementById("savebar").style.display="none";bindLogEdits();
+  app.innerHTML=html+verStamp();document.getElementById("savebar").style.display="none";bindLogEdits();
 }
 
 /* shared inline edit/delete for logged rows (history + past day) */
