@@ -371,11 +371,15 @@ function summarizeRows(rows){
   if(nonRep && rows.length===1){
     let s=rowVal(r0); if(r0.weight!=null)s+=" @ "+r0.weight+" lb"; if(r0.rpe!=null)s+=" · RPE "+r0.rpe; return s+hrw;
   }
-  const vals=rows.map(rowVal);
-  const repsOnly=rows.every(r=>r.reps!=null&&r.distance==null&&r.calories==null&&r.duration_sec==null&&r.duration_min==null);
-  const wts=[...new Set(rows.map(r=>r.weight).filter(w=>w!=null))];
-  const w=wts.length===1?` @ ${wts[0]} lb`:(wts.length>1?` @ ${Math.min(...wts)}–${Math.max(...wts)} lb`:"");
-  return `${rows.length} set${rows.length>1?"s":""} · ${vals.join(", ")}${repsOnly?" reps":""}${w}`+hrw;
+  const pair=r=>{
+    if(r.reps!=null&&r.weight!=null)return `${r.reps}×${r.weight}`;
+    let s=rowVal(r);
+    if(r.weight!=null)s+=` @ ${r.weight}`;
+    return s;
+  };
+  const anyW=rows.some(r=>r.weight!=null);
+  const repsOnly=rows.every(r=>r.reps!=null&&r.weight==null&&r.distance==null&&r.calories==null&&r.duration_sec==null&&r.duration_min==null);
+  return `${rows.map(pair).join(", ")}${anyW?" lb":(repsOnly?" reps":"")}`+hrw;
 }
 function fmtLast(name){
   const s=lastSessionFor(name,selDate);if(!s)return"";
@@ -484,11 +488,11 @@ function renderReaderDay(day,dateLogs){
       h+=`<tr class="rt-ex ${sd.done?"rt-done":""} ${open?"rt-open":""}" onclick="rdToggle('${key}')"><td class="rt-nm">${sd.done?"✓ ":""}${esc(e.name)}</td><td class="rt-ds">${esc(e.dose||"")}</td></tr>`;
       if(open){
         const lt=fmtLast(e.name);
-        h+=`<tr class="rt-last"><td colspan="2">${lt?`⟲ Last: ${esc(lt)}`:"No prior log for this exercise"}</td></tr>`;
         h+=`<tr class="rt-in"><td colspan="2" onclick="event.stopPropagation()">`;
         if(style==="typed")h+=metricTable(key,sd);
         else if(style==="cardio")h+=renderCardioFields(key,sd,e);
         else h+=`<button class="mini" data-done="${key}">${sd.done?"Marked done ✓":"Mark done"}</button>`;
+        h+=`<div class="rt-lastin">${lt?`⟲ ${esc(lt)}`:"No prior log for this exercise"}</div>`;
         h+=`<textarea class="exnote" data-note="${key}" placeholder="Note…">${esc(sd.note)}</textarea>`;
         h+=`</td></tr>`;
       }
@@ -1085,7 +1089,7 @@ body.vm-reader .rt-nm{font-weight:700;}
 body.vm-reader .rt-ds{font-weight:600;text-align:right;white-space:normal;}
 body.vm-reader .rt-done td{color:#1f6f63;}
 body.vm-reader .rt-open td{background:#fdf6e3 !important;border-bottom:none;}
-body.vm-reader .rt-last td{background:#fdf6e3;font-size:18px;font-weight:600;border-bottom:1px dashed #b8b2a4;padding-top:2px;}
+body.vm-reader .rt-lastin{font-size:18px;font-weight:600;padding:8px 2px 2px;border-top:1px dashed #b8b2a4;margin-top:6px;}
 body.vm-reader .rt-in td{background:#fdf6e3;border-bottom:2.5px solid #1c2630;}
 body.vm-reader .rt-in .sets table{width:100%;}
 body.vm-reader .rt-in .sets input{font-size:22px;padding:12px;border-width:2px;}
