@@ -145,7 +145,7 @@
 <header>
   <p class="kicker">Training Log</p>
   <h1 id="title">Loading…</h1>
-  <p class="who" id="subtitle"></p>
+  <p class="who" id="subtitle" style="display:none"></p>
 </header>
 
 <div class="wrap"><div id="app"></div></div>
@@ -197,7 +197,7 @@ let workouts=[],editingWorkout=null;
 let calMonth=new Date();
 /* ---- view modes: std | large | reader ---- */
 const VM_ORDER=["std","large","reader"];
-const VM_LABEL={std:"Aa Standard",large:"Aa Large",reader:"Aa Reader"};
+const VM_LABEL={std:"Aa",large:"Aa+",reader:"Aa▦"};
 let viewMode=(function(){
   const p=new URLSearchParams(location.search).get("view");
   if(p&&VM_ORDER.includes(p))return p;
@@ -403,11 +403,11 @@ function renderDateNav(){
     <span class="datefield" style="margin:0;flex:1"><input type="date" id="seldate" value="${selDate}" onchange="onDateChange(this.value)" style="width:100%"></span>
     <button class="chip navchip" onclick="shiftDate(1)">›</button>
     <button class="chip ${selDate===todayISO()&&mode==='day'&&!backfill?'on':''}" onclick="goToday()">Today</button>
-    <button class="chip ${mode==='calendar'?'on':''}" onclick="openCal()">📅 Month</button>
-    <button class="chip" onclick="printWeek()">🖨 Week</button>
-    <button class="chip" onclick="printDay()">🖨 Day</button>
+    <button class="chip ${mode==='calendar'?'on':''}" onclick="openCal()">📅</button>
+    <button class="chip" title="Print week" onclick="printWeek()">🖨W</button>
+    <button class="chip" title="Print day" onclick="printDay()">🖨D</button>
     <button class="chip" id="vmChip" onclick="cycleView()">Aa</button>
-    <button class="chip ${mode==='history'?'on':''}" onclick="setMode('history')">History</button>
+    <button class="chip ${mode==='history'?'on':''}" title="History" onclick="setMode('history')">🕘</button>
     <button class="chip ${mode==='workouts'?'on':''}" onclick="openWorkouts()">🏋 Workouts</button>
     <button class="chip" onclick="markRest()">😴 Rest</button>
   </div>`;
@@ -1022,7 +1022,6 @@ body.vm-large .ex-cue{font-size:17.5px;color:#2c3742;}
 body.vm-large .ex-coachnote{font-size:17px;}
 body.vm-large .bnote,body.vm-large .note-line{font-size:18px;}
 body.vm-large .lastval{font-size:16px;color:#2c3742;}
-body.vm-large .chip{font-size:17.5px;padding:10px 15px;}
 body.vm-large .mini{font-size:16.5px;}
 body.vm-large .sets input,body.vm-large .cardio-fields input,body.vm-large .cardio-fields select{font-size:19px;padding:12px;}
 body.vm-large .cardio-fields label{font-size:15.5px;color:#2c3742;}
@@ -1047,7 +1046,6 @@ body.vm-reader .ex-dose{font-size:21px;color:#1c2630;background:none;padding:0;f
 body.vm-reader .bnote,body.vm-reader .note-line{font-size:20px;background:none;border-left:4px solid #1c2630;padding-left:10px;}
 body.vm-reader .sets input,body.vm-reader .cardio-fields input,body.vm-reader .cardio-fields select{font-size:22px;padding:14px;border-width:2px;}
 body.vm-reader .cardio-fields label{font-size:17px;color:#1c2630;}
-body.vm-reader .chip{font-size:19px;padding:12px 16px;border-width:2px;}
 body.vm-reader .mini{font-size:18px;padding:11px 15px;}
 body.vm-reader .hist-row{font-size:19px;}
 body.vm-reader .nd-name{font-size:20px;}
