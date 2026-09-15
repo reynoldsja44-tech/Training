@@ -465,14 +465,44 @@ function loggedRow(l){
   h+=`<button class="del" data-del="${l.id}">🗑</button>${l.note?`<div class="hnote">📝 ${esc(l.note)}</div>`:""}</div>`;
   return h;
 }
+function plannedNotLogged(day,dateLogs){
+  if(!day||day.rest)return[];
+  const names=new Set(dateLogs.map(l=>(l.exercise_name||"").trim().toLowerCase()));
+  const out=[];
+  (day.blocks||[]).forEach(b=>(b.ex||[]).forEach(e=>{
+    if(e&&e.name&&!names.has((e.name||"").trim().toLowerCase()))out.push({bt:(b.title||b.tag||"Workout"),e});
+  }));
+  return out;
+}
+function notDoneSection(nd){
+  let h=`<div class="secthead nd">Not done</div>`;
+  const byB={};nd.forEach(x=>{(byB[x.bt]=byB[x.bt]||[]).push(x.e);});
+  Object.keys(byB).forEach(bt=>{
+    h+=`<div class="hist-day ndwrap"><h4>${esc(bt)}</h4>`;
+    byB[bt].forEach(e=>{h+=`<div class="nd-row"><span class="nd-name">${esc(e.name)}</span>${e.dose?`<span class="nd-dose">${esc(e.dose)}</span>`:""}</div>`;});
+    h+=`</div>`;
+  });
+  return h;
+}
 function renderLoggedDay(day,dateLogs){
-  let h=`<div class="day-head"><h2>${niceDate(selDate)}</h2><div class="meta">${dateLogs.length?esc(dateLogs[0].day_focus||"Logged"):"Nothing logged"}</div></div>`;
+  const nd=plannedNotLogged(day,dateLogs);
+  let h=`<div class="day-head"><h2>${niceDate(selDate)}</h2><div class="meta">${dateLogs.length?esc(dateLogs[0].day_focus||"Logged"):(day&&day.focus?esc(day.focus):"Nothing logged")}</div></div>`;
   if(!dateLogs.length){
-    h+=`<div class="center"><div class="big">Nothing logged this day</div>${day&&!day.rest?`The plan for ${fullDow(dowOf(selDate))} was <b>${esc(day.focus||"")}</b>.`:(day&&day.rest?"This was a scheduled rest day.":"")}<div style="margin-top:16px"><button class="chip on" onclick="startBackfill()">Log this day</button></div></div>`;
+    if(day&&day.rest){
+      h+=`<div class="center"><div class="big">Scheduled rest day</div>Nothing logged — that''s the plan working.<div style="margin-top:16px"><button class="chip" onclick="startBackfill()">Log something anyway</button></div></div>`;
+    } else if(nd.length){
+      h+=`<div class="center" style="padding:14px 16px 6px"><div class="big">Nothing logged this day</div>Here''s what was scheduled:</div>`;
+      h+=notDoneSection(nd);
+      h+=`<div style="text-align:center;margin:16px"><button class="chip on" onclick="startBackfill()">Log this day late</button></div>`;
+    } else {
+      h+=`<div class="center"><div class="big">Nothing logged this day</div>No workout was scheduled either.<div style="margin-top:16px"><button class="chip on" onclick="startBackfill()">Log this day</button></div></div>`;
+    }
     return h;
   }
+  h+=`<div class="secthead ok">Logged</div>`;
   const byBlock={};dateLogs.forEach(l=>{(byBlock[l.block_title||"Workout"]=byBlock[l.block_title||"Workout"]||[]).push(l);});
   Object.keys(byBlock).forEach(bt=>{h+=`<div class="hist-day"><h4>${esc(bt)}</h4>`;byBlock[bt].forEach(l=>{h+=loggedRow(l);});h+=`</div>`;});
+  if(nd.length)h+=notDoneSection(nd);
   h+=`<div style="text-align:center;margin:16px"><button class="chip" onclick="startBackfill()">+ Log more for this day</button></div>`;
   return h;
 }
@@ -957,6 +987,13 @@ init();
 </script>
 <style>
 #printRoot{display:none;}
+.secthead{font-weight:800;font-size:16px;margin:16px 4px 8px;display:flex;align-items:center;gap:8px;}
+.secthead.ok::before{content:"✓";color:#1f6f63;font-size:18px;}
+.secthead.nd::before{content:"✗";color:#b3423a;font-size:18px;}
+.ndwrap{border-left:4px solid #d9a03c;}
+.nd-row{display:flex;gap:10px;align-items:baseline;padding:8px 15px;border-top:1px solid #f0ebdf;flex-wrap:wrap;}
+.nd-name{font-weight:600;font-size:16px;color:#3a4754;}
+.nd-dose{font-size:14.5px;color:#5a6773;}
 .acal{background:var(--card,#fff);border-radius:16px;padding:14px;margin-top:12px;box-shadow:0 1px 4px rgba(20,30,40,.06);}
 .acal-top{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
 .acal-month{flex:1;text-align:center;font-weight:800;font-size:19px;}
