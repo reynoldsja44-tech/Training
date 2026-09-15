@@ -216,7 +216,8 @@ function cycleView(){
 }
 let collapsed={};
 function clpKey(bi){return selDate+"|"+bi;}
-function toggleBlock(id,headEl){collapsed[id]=!collapsed[id];headEl.closest(".block").classList.toggle("clps",!!collapsed[id]);}
+function isClp(id){return collapsed[id]!==false;}
+function toggleBlock(id,headEl){collapsed[id]=isClp(id)?false:true;headEl.closest(".block").classList.toggle("clps",isClp(id));}
 const dowOrder=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const fullDow=d=>({Mon:"Monday",Tue:"Tuesday",Wed:"Wednesday",Thu:"Thursday",Fri:"Friday",Sat:"Saturday",Sun:"Sunday"}[d]||d);
 const checkSVG='<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
@@ -459,7 +460,7 @@ function render(){
   const canEdit=selDate>=todayISO();
   const nBlocks=(day.blocks||[]).length;
   (day.blocks||[]).forEach((b,bi)=>{
-    const ck=clpKey("b"+bi),isC=!!collapsed[ck];
+    const ck=clpKey("b"+bi),isC=isClp(ck);
     const nEx=(b.ex||[]).length;
     html+=`<div class="block ${esc(b.kind||"strength")} ${isC?"clps":""}"><div class="block-head" onclick="toggleBlock('${ck}',this)"><div style="flex:1;min-width:0"><div class="tag">${esc(b.tag||b.kind||"")}</div><h3>${esc(b.title||"")}</h3>${b.sub?`<div class="sub">${esc(b.sub)}</div>`:""}</div>${canEdit?blkToolsHtml(bi,nBlocks):""}<div class="clp-right"><span class="clp-count">${nEx}</span><span class="caret">▾</span></div></div>${canEdit?blkMoveRowHtml(bi):""}<div class="block-body">`;
     if(b.note)html+=`<div class="bnote plain">${esc(b.note)}</div>`;
@@ -769,7 +770,7 @@ function applyWorkoutToDay(id){
 /* ---------------- extras ---------------- */
 function renderExtrasWrap(){return `<div style="margin-top:18px">${renderExtras()}</div>`;}
 function renderExtras(){
-  const ck=clpKey("extras"),isC=!!collapsed[ck];
+  const ck=clpKey("extras"),isC=isClp(ck);
   let h=`<div class="block extra ${isC?"clps":""}"><div class="block-head" onclick="toggleBlock('${ck}',this)"><div style="flex:1;min-width:0"><div class="tag">Added by athlete</div><h3>Anything not on the plan</h3><div class="sub">Log an extra activity or something you swapped in.</div></div><div class="clp-right">${extras.length?`<span class="clp-count">${extras.length}</span>`:""}<span class="caret">▾</span></div></div><div class="block-body">`;
   extras.forEach((x,xi)=>{h+=renderExtraCard(x,xi);});
   h+=`<div class="exwrap"><button class="mini" id="addExtraBtn">+ Add an activity</button></div></div></div>`;return h;
