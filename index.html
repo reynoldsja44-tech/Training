@@ -195,6 +195,25 @@ const DB=DEMO?makeDemoDB():realDB;
 let athlete=null,program=null,logs=[],selDate=null,mode="day",backfill=false,sessionData={},extras=[];
 let workouts=[],editingWorkout=null;
 let calMonth=new Date();
+/* ---- view modes: std | large | reader ---- */
+const VM_ORDER=["std","large","reader"];
+const VM_LABEL={std:"Aa Standard",large:"Aa Large",reader:"Aa Reader"};
+let viewMode=(function(){
+  const p=new URLSearchParams(location.search).get("view");
+  if(p&&VM_ORDER.includes(p))return p;
+  try{const s=localStorage.getItem("vm_"+SLUG);if(s&&VM_ORDER.includes(s))return s;}catch(e){}
+  return "std";
+})();
+function applyViewMode(){
+  document.body.classList.toggle("vm-large",viewMode==="large");
+  document.body.classList.toggle("vm-reader",viewMode==="reader");
+  const c=document.getElementById("vmChip");if(c)c.textContent=VM_LABEL[viewMode];
+}
+function cycleView(){
+  viewMode=VM_ORDER[(VM_ORDER.indexOf(viewMode)+1)%VM_ORDER.length];
+  try{localStorage.setItem("vm_"+SLUG,viewMode);}catch(e){}
+  applyViewMode();
+}
 let collapsed={};
 function clpKey(bi){return selDate+"|"+bi;}
 function toggleBlock(id,headEl){collapsed[id]=!collapsed[id];headEl.closest(".block").classList.toggle("clps",!!collapsed[id]);}
@@ -387,6 +406,7 @@ function renderDateNav(){
     <button class="chip ${mode==='calendar'?'on':''}" onclick="openCal()">📅 Month</button>
     <button class="chip" onclick="printWeek()">🖨 Week</button>
     <button class="chip" onclick="printDay()">🖨 Day</button>
+    <button class="chip" id="vmChip" onclick="cycleView()">Aa</button>
     <button class="chip ${mode==='history'?'on':''}" onclick="setMode('history')">History</button>
     <button class="chip ${mode==='workouts'?'on':''}" onclick="openWorkouts()">🏋 Workouts</button>
     <button class="chip" onclick="markRest()">😴 Rest</button>
@@ -399,6 +419,7 @@ function startBackfill(){backfill=true;sessionData={};extras=[];render();}
 
 /* ---------------- main render ---------------- */
 function render(){
+  setTimeout(applyViewMode,0);
   if(mode==="history")return renderHistory();
   if(mode==="calendar")return renderAthCal();
   if(mode==="workouts")return renderWorkouts();
@@ -987,6 +1008,51 @@ init();
 </script>
 <style>
 #printRoot{display:none;}
+/* ---- LARGE PRINT: bigger + darker everywhere ---- */
+body.vm-large{--muted:#2c3742;font-size:20px;}
+body.vm-large .day-head h2{font-size:27px;}
+body.vm-large .day-head .meta{font-size:20px;}
+body.vm-large .day-pill .fx{font-size:15px;color:#2c3742;}
+body.vm-large .block-head h3{font-size:23px;}
+body.vm-large .block-head .sub{font-size:17.5px;color:#2c3742;}
+body.vm-large .block-head .tag{font-size:14px;}
+body.vm-large .ex-name{font-size:21px;}
+body.vm-large .ex-dose{font-size:17.5px;}
+body.vm-large .ex-cue{font-size:17.5px;color:#2c3742;}
+body.vm-large .ex-coachnote{font-size:17px;}
+body.vm-large .bnote,body.vm-large .note-line{font-size:18px;}
+body.vm-large .lastval{font-size:16px;color:#2c3742;}
+body.vm-large .chip{font-size:17.5px;padding:10px 15px;}
+body.vm-large .mini{font-size:16.5px;}
+body.vm-large .sets input,body.vm-large .cardio-fields input,body.vm-large .cardio-fields select{font-size:19px;padding:12px;}
+body.vm-large .cardio-fields label{font-size:15.5px;color:#2c3742;}
+body.vm-large .exnote{font-size:17.5px;}
+body.vm-large .hist-row{font-size:17.5px;}
+body.vm-large .nd-name{font-size:18px;}
+body.vm-large .nd-dose{font-size:16.5px;color:#2c3742;}
+body.vm-large .secthead{font-size:19px;}
+body.vm-large .acal-focus{font-size:13px;color:#2c3742;-webkit-line-clamp:5;}
+body.vm-large .acal-cell{min-height:88px;}
+/* ---- READER: maximum legibility, minimum decoration ---- */
+body.vm-reader{--muted:#1c2630;font-size:22px;background:#fff;}
+body.vm-reader .block,body.vm-reader .hist-day{box-shadow:none;border:none;border-top:3px solid #1c2630;border-radius:0;background:#fff;}
+body.vm-reader .block-head{border-left:none;padding:14px 6px 10px;}
+body.vm-reader .block-head h3{font-size:25px;}
+body.vm-reader .block-head .tag,body.vm-reader .block-head .sub,body.vm-reader .lastval,body.vm-reader .ex-coachnote,body.vm-reader .ex-cue,body.vm-reader .logged-badge,body.vm-reader .clp-count{display:none;}
+body.vm-reader .day-head h2{font-size:30px;}
+body.vm-reader .day-head .meta{font-size:23px;color:#1c2630;}
+body.vm-reader .ex{padding:14px 6px;border-top:1.5px solid #d8d8d8;}
+body.vm-reader .ex-name{font-size:24px;font-weight:700;}
+body.vm-reader .ex-dose{font-size:21px;color:#1c2630;background:none;padding:0;font-weight:600;display:block;margin-top:3px;}
+body.vm-reader .bnote,body.vm-reader .note-line{font-size:20px;background:none;border-left:4px solid #1c2630;padding-left:10px;}
+body.vm-reader .sets input,body.vm-reader .cardio-fields input,body.vm-reader .cardio-fields select{font-size:22px;padding:14px;border-width:2px;}
+body.vm-reader .cardio-fields label{font-size:17px;color:#1c2630;}
+body.vm-reader .chip{font-size:19px;padding:12px 16px;border-width:2px;}
+body.vm-reader .mini{font-size:18px;padding:11px 15px;}
+body.vm-reader .hist-row{font-size:19px;}
+body.vm-reader .nd-name{font-size:20px;}
+body.vm-reader .nd-dose{font-size:18px;color:#1c2630;}
+body.vm-reader .secthead{font-size:21px;}
 .secthead{font-weight:800;font-size:16px;margin:16px 4px 8px;display:flex;align-items:center;gap:8px;}
 .secthead.ok::before{content:"✓";color:#1f6f63;font-size:18px;}
 .secthead.nd::before{content:"✗";color:#b3423a;font-size:18px;}
