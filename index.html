@@ -212,7 +212,7 @@ function applyViewMode(){
 function cycleView(){
   viewMode=VM_ORDER[(VM_ORDER.indexOf(viewMode)+1)%VM_ORDER.length];
   try{localStorage.setItem("vm_"+SLUG,viewMode);}catch(e){}
-  applyViewMode();
+  applyViewMode();render();
 }
 let collapsed={};
 function clpKey(bi){return selDate+"|"+bi;}
@@ -406,7 +406,7 @@ function renderDateNav(){
     <button class="chip ${mode==='calendar'?'on':''}" onclick="openCal()">📅</button>
     <button class="chip" title="Print week" onclick="printWeek()">🖨W</button>
     <button class="chip" title="Print day" onclick="printDay()">🖨D</button>
-    <button class="chip" id="vmChip" onclick="cycleView()">Aa</button>
+    <button class="chip" id="vmChip" onclick="cycleView()">${VM_LABEL[viewMode]}</button>
     <button class="chip ${mode==='history'?'on':''}" title="History" onclick="setMode('history')">🕘</button>
     <button class="chip ${mode==='workouts'?'on':''}" onclick="openWorkouts()">🏋 Workouts</button>
     <button class="chip" onclick="markRest()">😴 Rest</button>
@@ -445,6 +445,13 @@ function render(){
     html+=`<div class="block accessory"><div class="rest-day"><div class="big">Rest day</div>${esc((day.blocks&&day.blocks[0]&&day.blocks[0].note)||day.note||"Enjoy the recovery.")}</div></div>`;
     html+=renderExtras();app.innerHTML=html;bindExtras();document.getElementById("savebar").style.display="block";updateSaveCount();return;
   }
+  if(viewMode==="reader"){
+    html+=renderReaderDay(day,dateLogs);
+    html+=renderExtras();
+    app.innerHTML=html;bindExercises();bindExtras();
+    document.getElementById("savebar").style.display="block";updateSaveCount();
+    return;
+  }
   const canEdit=selDate>=todayISO();
   const nBlocks=(day.blocks||[]).length;
   (day.blocks||[]).forEach((b,bi)=>{
@@ -461,6 +468,36 @@ function render(){
   app.innerHTML=html;bindExercises();bindExtras();
   document.getElementById("savebar").style.display="block";updateSaveCount();
 }
+
+/* ---------------- READER MODE: full-day table (Option B) ---------------- */
+let rdOpen={};
+function rdToggle(key){rdOpen[key]=!rdOpen[key];render();}
+function renderReaderDay(day,dateLogs){
+  let h=`<table class="rt">`;
+  (day.blocks||[]).forEach((b,bi)=>{
+    if(!(b.ex||[]).length&&!b.note)return;
+    h+=`<tr class="rt-block"><td colspan="2">${esc(b.title||b.tag||"")}${b.sub?` <span class="rt-sub">· ${esc(b.sub)}</span>`:""}</td></tr>`;
+    if(b.note)h+=`<tr class="rt-note"><td colspan="2">${esc(b.note)}</td></tr>`;
+    (b.ex||[]).forEach((e,ei)=>{
+      const {key,sd,style,last,already}=initExState(block_(b),bi,e,ei);
+      const open=!!rdOpen[key];
+      h+=`<tr class="rt-ex ${sd.done?"rt-done":""} ${open?"rt-open":""}" onclick="rdToggle('${key}')"><td class="rt-nm">${sd.done?"✓ ":""}${esc(e.name)}</td><td class="rt-ds">${esc(e.dose||"")}</td></tr>`;
+      if(open){
+        const lt=fmtLast(e.name);
+        h+=`<tr class="rt-last"><td colspan="2">${lt?`⟲ Last: ${esc(lt)}`:"No prior log for this exercise"}</td></tr>`;
+        h+=`<tr class="rt-in"><td colspan="2" onclick="event.stopPropagation()">`;
+        if(style==="typed")h+=metricTable(key,sd);
+        else if(style==="cardio")h+=renderCardioFields(key,sd,e);
+        else h+=`<button class="mini" data-done="${key}">${sd.done?"Marked done ✓":"Mark done"}</button>`;
+        h+=`<textarea class="exnote" data-note="${key}" placeholder="Note…">${esc(sd.note)}</textarea>`;
+        h+=`</td></tr>`;
+      }
+    });
+  });
+  h+=`</table>`;
+  return h;
+}
+function block_(b){return b;}
 
 /* ---------------- logged (past) day ---------------- */
 function loggedRow(l){
@@ -529,7 +566,7 @@ function renderLoggedDay(day,dateLogs){
 }
 
 /* ---------------- exercise (program-logging) ---------------- */
-function renderExercise(block,bi,e,ei,dateLogs){
+function initExState(block,bi,e,ei){
   ensureMetrics(e);
   const key=exKey(bi,ei);
   const sd=sessionData[key]||(sessionData[key]={sets:[],note:"",done:false,activity:"",duration:"",rpe:""});
@@ -572,7 +609,10 @@ function renderExercise(block,bi,e,ei,dateLogs){
     }
   }
   if(style==="cardio" && !sd._init){sd.activity=e.name;sd._init=true;}
-  const already=savedRows;
+  return {key,sd,style,last,already:savedRows};
+}
+function renderExercise(block,bi,e,ei,dateLogs){
+  const {key,sd,style,last,already}=initExState(block,bi,e,ei);
   let h=`<div class="exwrap ${sd.done?"done":""} ${already.length?"haslog":""}" data-key="${key}">`;
   h+=`<div class="exrow"><div class="done-btn" data-done="${key}">${checkSVG}</div><div style="flex:1;min-width:0">`;
   h+=`<div class="ex-name">${esc(e.name)}</div>`;
@@ -1032,6 +1072,29 @@ body.vm-large .nd-dose{font-size:16.5px;color:#2c3742;}
 body.vm-large .secthead{font-size:19px;}
 body.vm-large .acal-focus{font-size:13px;color:#2c3742;-webkit-line-clamp:5;}
 body.vm-large .acal-cell{min-height:88px;}
+/* ---- READER TABLE (Option B) ---- */
+body.vm-reader .rt{width:100%;border-collapse:collapse;border:2px solid #1c2630;margin:10px 0 20px;background:#fff;}
+body.vm-reader .rt td{padding:13px 10px;}
+body.vm-reader .rt-block td{background:#1c2630;color:#fff;font-weight:800;font-size:20px;padding:10px;}
+body.vm-reader .rt-sub{font-weight:400;font-size:16px;opacity:.85;}
+body.vm-reader .rt-note td{font-style:italic;font-size:18px;background:#f4f2ec;border-bottom:1px solid #ccc;}
+body.vm-reader .rt-ex{cursor:pointer;}
+body.vm-reader .rt-ex td{font-size:21px;border-bottom:1px solid #ccc;}
+body.vm-reader .rt-ex:nth-of-type(even) td{background:#f2f2ee;}
+body.vm-reader .rt-nm{font-weight:700;}
+body.vm-reader .rt-ds{font-weight:600;text-align:right;white-space:normal;}
+body.vm-reader .rt-done td{color:#1f6f63;}
+body.vm-reader .rt-open td{background:#fdf6e3 !important;border-bottom:none;}
+body.vm-reader .rt-last td{background:#fdf6e3;font-size:18px;font-weight:600;border-bottom:1px dashed #b8b2a4;padding-top:2px;}
+body.vm-reader .rt-in td{background:#fdf6e3;border-bottom:2.5px solid #1c2630;}
+body.vm-reader .rt-in .sets table{width:100%;}
+body.vm-reader .rt-in .sets input{font-size:22px;padding:12px;border-width:2px;}
+body.vm-reader .rt-in .sets th{font-size:15px;color:#1c2630;}
+body.vm-reader .rt-in .sets td{padding:6px 4px;border-bottom:none;font-size:19px;}
+body.vm-reader .rt-in .cardio-fields input,body.vm-reader .rt-in .cardio-fields select{font-size:22px;padding:12px;border-width:2px;}
+body.vm-reader .rt-in .cardio-fields label{font-size:16px;color:#1c2630;}
+body.vm-reader .rt-in .exnote{font-size:19px;border-width:2px;margin-top:8px;}
+body.vm-reader .rt-in .mini{font-size:18px;padding:11px 15px;}
 /* ---- READER: maximum legibility, minimum decoration ---- */
 body.vm-reader{--muted:#1c2630;font-size:22px;background:#fff;}
 body.vm-reader .block,body.vm-reader .hist-day{box-shadow:none;border:none;border-top:3px solid #1c2630;border-radius:0;background:#fff;}
