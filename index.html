@@ -123,6 +123,19 @@
   .save-btn:disabled{opacity:.5;}
   .savecount{font-size:13px;color:var(--muted);white-space:nowrap;}
 
+  .pk-overlay{position:fixed;inset:0;background:rgba(20,28,36,.5);display:flex;align-items:flex-end;justify-content:center;z-index:90;}
+  .pk{background:#fff;border-radius:18px 18px 0 0;width:100%;max-width:640px;max-height:82vh;display:flex;flex-direction:column;box-shadow:var(--shadow);}
+  .pk-h{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;}
+  .pk-h h3{margin:0;flex:1;font-size:17px;}
+  .pk-f{padding:10px 14px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--line);}
+  .pk-f input{flex:1;min-width:140px;font-family:inherit;font-size:16px;border:1.5px solid var(--line);border-radius:9px;padding:9px;}
+  .pk-f select{font-family:inherit;font-size:15px;border:1.5px solid var(--line);border-radius:9px;padding:8px;background:#fff;}
+  .pk-l{overflow:auto;padding:6px 0 14px;}
+  .pk-i{padding:11px 14px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;gap:10px;align-items:center;}
+  .pk-i:active{background:#f1f4f7;}
+  .pk-i b{display:block;font-size:16px;}
+  .pk-i .sub{font-size:13px;color:#6b7884;}
+  .pk-i .kd{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#6b7884;min-width:62px;}
   .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:11px 18px;border-radius:12px;font-size:15px;font-weight:600;opacity:0;transition:.25s;pointer-events:none;z-index:50;box-shadow:var(--shadow);}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
   .toast.err{background:#9a3b3b;}
@@ -175,6 +188,7 @@ const realDB={
   async updateLog(id,patch){const r=await fetch(`${REST}/logs?id=eq.${id}`,{method:"PATCH",headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY,"Content-Type":"application/json"},body:JSON.stringify(patch)});if(!r.ok)throw new Error(await r.text());},
   async deleteLog(id){const r=await fetch(`${REST}/logs?id=eq.${id}`,{method:"DELETE",headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY}});if(!r.ok)throw new Error(await r.text());},
   async deleteLogsFor(slug,date,name){const r=await fetch(`${REST}/logs?athlete_slug=eq.${encodeURIComponent(slug)}&log_date=eq.${date}&exercise_name=eq.${encodeURIComponent(name)}`,{method:"DELETE",headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY}});if(!r.ok)throw new Error(await r.text());},
+  async libList(){const r=await fetch(`${REST}/exercises?select=id,name,kind,category,dose,cue&order=name`,{headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY}});if(!r.ok)throw new Error(await r.text());return r.json();},
   async updateAthlete(id,patch){const r=await fetch(`${REST}/athletes?id=eq.${id}`,{method:"PATCH",headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY,"Content-Type":"application/json"},body:JSON.stringify(patch)});if(!r.ok)throw new Error(await r.text());}
 };
 const DEMO_PROGRAM={days:[
@@ -194,7 +208,7 @@ const DB=DEMO?makeDemoDB():realDB;
 
 let athlete=null,program=null,logs=[],selDate=null,mode="day",backfill=false,sessionData={},extras=[];
 let workouts=[],editingWorkout=null;
-const APP_VER="2026-09-12.1";
+const APP_VER="2026-11-16.1";
 let calMonth=new Date();
 /* ---- view modes: std | large | reader ---- */
 const VM_ORDER=["std","large","reader"];
@@ -769,13 +783,48 @@ function applyWorkoutToDay(id){
   });
   mode="day";render();toast(`Added “${w.name}” — fill in what you did`);
 }
+/* ---------------- library picker ---------------- */
+let library=[],pkQ="",pkKind="";
+async function openLibPicker(){
+  if(!library.length){try{library=await DB.libList();}catch(e){toast("Couldn't load library",true);return;}}
+  pkQ="";pkKind="";renderLibPicker();
+}
+function closeLibPicker(){const el=document.getElementById("pkRoot");if(el)el.remove();}
+function renderLibPicker(){
+  let root=document.getElementById("pkRoot");
+  if(!root){root=document.createElement("div");root.id="pkRoot";document.body.appendChild(root);}
+  const ql=pkQ.trim().toLowerCase();
+  const kinds=[...new Set(library.map(e=>e.kind).filter(Boolean))].sort();
+  const items=library.filter(e=>(!ql||(e.name||"").toLowerCase().includes(ql)||(e.category||"").toLowerCase().includes(ql))&&(!pkKind||e.kind===pkKind));
+  let h=`<div class="pk-overlay" onclick="if(event.target===this)closeLibPicker()"><div class="pk">
+    <div class="pk-h"><h3>Add from library</h3><button class="mini" onclick="closeLibPicker()">Close</button></div>
+    <div class="pk-f"><input id="pkSearch" placeholder="Search ${library.length} exercises…" value="${esc(pkQ)}" oninput="pkQ=this.value;renderLibPicker();document.getElementById('pkSearch').focus()" autocomplete="off">
+    <select onchange="pkKind=this.value;renderLibPicker()"><option value="">All kinds</option>${kinds.map(k=>`<option value="${esc(k)}" ${pkKind===k?"selected":""}>${esc(k)}</option>`).join("")}</select></div>
+    <div class="pk-l">`;
+  if(!items.length)h+=`<div class="center" style="padding:20px">No matches.</div>`;
+  items.slice(0,150).forEach(e=>{h+=`<div class="pk-i" onclick="pickLib(${e.id})"><span class="kd">${esc(e.kind||"")}</span><div style="flex:1;min-width:0"><b>${esc(e.name)}</b><div class="sub">${esc([e.category,e.dose].filter(Boolean).join(" · "))}</div></div></div>`;});
+  if(items.length>150)h+=`<div class="center" style="padding:10px;font-size:13px">Showing 150 — keep typing to narrow.</div>`;
+  h+=`</div></div></div>`;
+  root.innerHTML=h;
+  const si=document.getElementById("pkSearch");if(si&&pkQ===""&&document.activeElement!==si){si.focus();}
+}
+function pickLib(id){
+  const e=library.find(x=>x.id===id);if(!e)return;
+  const p=parseDose(e.dose||"");
+  let metrics=canonMetrics(p.metrics);
+  if(!metrics.length)metrics=e.kind==="cardio"?["time","distance"]:(e.kind==="strength"?["reps","weight"]:["reps"]);
+  const n=Math.max(1,Math.min(parseInt(p.sets)||1,10));
+  extras.push({name:e.name,metrics,timeUnit:p.timeUnit||"sec",distUnit:p.distUnit||guessUnit(e.name),sets:Array.from({length:n},()=>({reps:"",weight:"",time:"",dist:"",cal:""})),note:"",target:e.dose||""});
+  collapsed[clpKey("extras")]=false;closeLibPicker();render();
+  const card=document.querySelector(`[data-extra="${extras.length-1}"]`);if(card)card.scrollIntoView({behavior:"smooth",block:"center"});
+}
 /* ---------------- extras ---------------- */
 function renderExtrasWrap(){return `<div style="margin-top:18px">${renderExtras()}</div>`;}
 function renderExtras(){
   const ck=clpKey("extras"),isC=isClp(ck);
   let h=`<div class="block extra ${isC?"clps":""}"><div class="block-head" onclick="toggleBlock('${ck}',this)"><div style="flex:1;min-width:0"><div class="tag">Added by athlete</div><h3>Anything not on the plan</h3><div class="sub">Log an extra activity or something you swapped in.</div></div><div class="clp-right">${extras.length?`<span class="clp-count">${extras.length}</span>`:""}<span class="caret">▾</span></div></div><div class="block-body">`;
   extras.forEach((x,xi)=>{h+=renderExtraCard(x,xi);});
-  h+=`<div class="exwrap"><button class="mini" id="addExtraBtn">+ Add an activity</button></div></div></div>`;return h;
+  h+=`<div class="exwrap" style="display:flex;gap:8px;flex-wrap:wrap"><button class="mini" id="addLibBtn">📚 Add from library</button><button class="mini" id="addExtraBtn">+ Blank activity</button></div></div></div>`;return h;
 }
 function renderExtraCard(x,xi){
   if(!Array.isArray(x.metrics))x.metrics=(x.type&&x.type!=="cardio")?canonMetrics([x.type]):["reps","weight"];
@@ -800,6 +849,7 @@ function extraSetRow(xi,si,s,cols){cols=cols||["reps"];const cell=m=>{const f=ME
 function bindExtras(){
   const add=document.getElementById("addExtraBtn");
   if(add)add.onclick=()=>{extras.push({name:"",metrics:["reps","weight"],sets:[{reps:"",weight:"",time:"",dist:"",cal:""}],timeUnit:"sec",distUnit:"mi",note:""});render();};
+  const lib=document.getElementById("addLibBtn");if(lib)lib.onclick=openLibPicker;
   document.querySelectorAll("[data-exf]").forEach(el=>{el.oninput=el.onchange=()=>{const xi=+el.dataset.xi;extras[xi][el.dataset.exf]=el.value;updateSaveCount();};});
   document.querySelectorAll("[data-exmetric]").forEach(b=>b.onclick=()=>{const xi=+b.dataset.xi;const m=b.getAttribute("data-exmetric");const x=extras[xi];if(!Array.isArray(x.metrics))x.metrics=[];x.metrics=x.metrics.includes(m)?x.metrics.filter(y=>y!==m):canonMetrics(x.metrics.concat(m));render();});
   document.querySelectorAll("[data-exs]").forEach(inp=>inp.oninput=()=>{const xi=+inp.dataset.xi;extras[xi].sets[+inp.dataset.i][inp.dataset.exs]=inp.value;updateSaveCount();});
